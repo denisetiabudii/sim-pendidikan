@@ -1,3 +1,6 @@
+import { SURAH_ALIASES, SURAH_AR } from "./surah-names"
+export { SURAH_AR };
+
 // Jumlah ayat per surah, mushaf standar Indonesia (riwayat Hafs, total 6.236 ayat).
 // Urutan sesuai nomor surah 1–114. Konfirmasi dengan ustadz pembina sebelum dipakai resmi.
 export const SURAHS: ReadonlyArray<readonly [string, number]> = [
@@ -40,7 +43,7 @@ export function validateAyatRange(no: number, from: number, to: number): string 
   if (!s) return "Surah tidak valid";
   if (!Number.isInteger(from) || !Number.isInteger(to)) return "Ayat harus berupa bilangan bulat";
   if (from < 1 || to < from) return "Ayat awal minimal 1 dan ayat akhir tidak boleh lebih kecil dari ayat awal";
-  if (to > s.ayat) return `${s.name} hanya memiliki ${s.ayat} ayat`;
+  if (to > s.ayat) return `Surah ${isolateAr(surahArabic(s.no))} hanya memiliki ${s.ayat} ayat`;
   return null;
 }
 
@@ -116,4 +119,70 @@ export function surahsInJuz(juz: number): JuzPart[] {
     if (hi >= lo) out.push({ no: n, name: SURAHS[n - 1][0], from: lo - OFFSET[n - 1], to: hi - OFFSET[n - 1] });
   }
   return out;
+}
+
+export const surahArabic = (no: number): string => SURAH_AR[no - 1] ?? "";
+
+// Mengisolasi teks Arab agar angka dan teks Latin di sekitarnya tidak terbalik urutannya.
+export const isolateAr = (s: string) => `\u2067${s}\u2069`;
+
+// Nama untuk ditampilkan: Arab bila surah ada di daftar, selain itu nama manual yang diketik guru.
+export const surahLabel = (no: number, fallback = ""): string => (no > 0 ? surahArabic(no) : fallback);
+
+// Teks pilihan dropdown, misalnya "2. البقرة · 286 ayat".
+export const surahOption = (no: number, suffix = ""): string =>
+  `${no}. ${isolateAr(surahArabic(no))}${suffix ? ` · ${suffix}` : ""}`;
+
+const AR_MARKS = /[\u064B-\u065F\u0670\u06D6-\u06ED\u0640]/g; // harakat dan tatwil
+const normAr = (s: string) =>
+  s
+    .normalize("NFKC")
+    .replace(AR_MARKS, "")
+    .replace(/[أإآٱ]/g, "ا")
+    .replace(/ى/g, "ي")
+    .replace(/ة/g, "ه")
+    .replace(/ؤ/g, "و")
+    .replace(/ئ/g, "ي")
+    .replace(/[^\u0621-\u064A]/g, "")
+    .replace(/ء/g, "");
+const stripAr = (k: string) => (k.startsWith("ال") && k.length > 3 ? k.slice(2) : k);
+const normLa = (s: string) =>
+  s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z]/g, "");
+const stripLa = (k: string) => {
+  const m = k.replace(/^(asy|ash|adh|ats|al|an|at|ar|as|az|ad)/, "");
+  return m.length >= 3 ? m : k;
+};
+const isArabic = (s: string) => /[\u0600-\u06FF]/.test(s);
+
+const INDEX = (() => {
+  const m = new Map<string, number>();
+  const add = (key: string, no: number) => {
+    if (key && !m.has(key)) m.set(key, no);
+  };
+  for (let n = 1; n <= SURAH_AR.length; n++) {
+    for (const nm of [SURAH_AR[n - 1], ...(SURAH_ALIASES[n] ?? [])]) {
+      if (isArabic(nm)) {
+        const k = normAr(nm);
+        add(k, n);
+        add(stripAr(k), n);
+      } else {
+        const k = normLa(nm);
+        add(k, n);
+        add(stripLa(k), n);
+      }
+    }
+    const lat = normLa(SURAHS[n - 1][0]);
+    add(lat, n);
+    add(stripLa(lat), n);
+  }
+  return m;
+})();
+
+// Nomor surah bila nama yang diketik cocok dengan daftar (Arab atau Latin), selain itu 0.
+export function matchSurah(input: string): number {
+  if (!input.trim()) return 0;
+  const ar = isArabic(input);
+  const k = ar ? normAr(input) : normLa(input);
+  if (!k) return 0;
+  return INDEX.get(k) ?? INDEX.get(ar ? stripAr(k) : stripLa(k)) ?? 0;
 }

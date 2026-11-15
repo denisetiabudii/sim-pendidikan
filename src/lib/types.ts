@@ -1,6 +1,11 @@
 export type Unit = "TKQ" | "RTQ";
 export type Role = "direktur" | "kepala" | "pendidik" | "wali";
-export type AttendanceStatus = "Hadir" | "Izin" | "Sakit" | "Alpa" | "Terlambat";
+export type AttendanceStatus =
+  | "Hadir"
+  | "Izin"
+  | "Sakit"
+  | "Alpa"
+  | "Terlambat";
 export type ReportStatus = "draft" | "submitted" | "approved" | "published";
 
 export interface Report {
@@ -11,14 +16,26 @@ export interface Report {
 export interface User {
   id: string;
   name: string;
+  username?: string;
   role: Role;
   unit?: Unit;
   groupIds?: string[];
   childIds?: string[];
 }
-export interface Group { id: string; name: string; unit: Unit }
-export interface Student { id: string; name: string; groupId: string }
-export interface Component { name: string; weight: number }
+export interface Group {
+  id: string;
+  name: string;
+  unit: Unit;
+}
+export interface Student {
+  id: string;
+  name: string;
+  groupId: string;
+}
+export interface Component {
+  name: string;
+  weight: number;
+}
 export interface Attendance {
   studentId: string;
   groupId: string;
@@ -40,12 +57,15 @@ export interface AppData {
   components: Record<Unit, Component[]>;
   attendance: Attendance[];
   scores: Record<string, Record<string, number>>; // studentId → nama komponen → nilai
-  reports: Record<string, Report>; 
-    notes: Note[];    
-      incidentCategories: IncidentCategory[];
+  reports: Record<string, Report>;
+  notes: Note[];
+  incidentCategories: IncidentCategory[];
   incidents: Incident[];
-    imports: ImportBatch[];  
-      recitations: Recitation[];         // studentId → status rapor
+  imports: ImportBatch[];
+  recitations: Recitation[];
+  rtqReports: Record<string, RtqReport>;
+  institution: Institution;
+  academic: Academic; // studentId → status rapor
   audit: AuditEntry[];
 }
 
@@ -99,7 +119,7 @@ export interface Recitation {
   id: string;
   studentId: string;
   authorId: string;
-    surahNo: number;
+  surahNo: number;
   date: string; // YYYY-MM-DD
   kind: RecitationKind;
   surah: string;
@@ -107,4 +127,44 @@ export interface Recitation {
   to: number;
   quality: RecitationQuality;
   createdAt: string;
+}
+
+export type Predikat = "A" | "A-" | "B" | "B-" | "C" | "C-" | "D" | "D-";
+export type Quarter = 1 | 2 | 3;
+export interface RtqAspect {
+  predikat: Predikat | "";
+  text: string;
+}
+export interface RtqSurahRow {
+  surahNo: number; // 0 = nama ditulis manual
+  name: string;
+  from: number;
+  to: number;
+  harian: number | null;
+  evaluasi: number | null;
+}
+export interface RtqReport {
+  studentId: string;
+  year: string;
+  quarter: Quarter;
+  status: ReportStatus;
+  version: number;
+  akhlak: { tuturKata: RtqAspect; sikap: RtqAspect };
+  tahsin: { kelancaran: RtqAspect; makhraj: RtqAspect; tajwid: RtqAspect };
+  tahfidz: RtqSurahRow[];
+  catatan: string;
+  absence?: { sakit: number; izin: number; tanpa: number }; // dibekukan saat diajukan
+  revisions?: { version: number; reason: string; at: string }[];
+}
+export interface Institution {
+  name: string;
+  nomorStatistik: string;
+  address: string;
+  city: string;
+  mudir: string;
+  logoDataUrl?: string;
+}
+export interface Academic {
+  year: string;
+  quarters: { start: string; end: string; signDate: string }[];
 }

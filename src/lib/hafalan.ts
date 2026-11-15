@@ -11,12 +11,19 @@ const toInterval = (r: Recitation): Interval => [absIndex(r.surahNo, r.from), ab
 
 export function memorizedFor(recs: Recitation[], studentId: string): Interval[] {
   return mergeIntervals(
-    recs.filter((r) => r.studentId === studentId && countsAsMemorized(r)).map(toInterval)
+    recs
+      .filter((r) => r.studentId === studentId && r.surahNo > 0 && countsAsMemorized(r))
+      .map(toInterval)
   );
 }
 
+// Surah manual (nomor 0) dihitung sebagai ayat, tetapi tidak masuk perhitungan juz.
 export function totalMemorized(recs: Recitation[], studentId: string): number {
-  return memorizedFor(recs, studentId).reduce((a, [x, y]) => a + (y - x + 1), 0);
+  const catalog = memorizedFor(recs, studentId).reduce((a, [x, y]) => a + (y - x + 1), 0);
+  const manual = recs
+    .filter((r) => r.studentId === studentId && r.surahNo <= 0 && countsAsMemorized(r))
+    .reduce((a, r) => a + (r.to - r.from + 1), 0);
+  return catalog + manual;
 }
 
 export function findOverlap(
@@ -26,10 +33,11 @@ export function findOverlap(
   from: number,
   to: number
 ): Recitation | undefined {
+  if (surahNo <= 0) return undefined;
   const a = absIndex(surahNo, from);
   const b = absIndex(surahNo, to);
   return recs.find((r) => {
-    if (r.studentId !== studentId || !countsAsMemorized(r)) return false;
+    if (r.studentId !== studentId || r.surahNo <= 0 || !countsAsMemorized(r)) return false;
     const [x, y] = toInterval(r);
     return x <= b && y >= a;
   });

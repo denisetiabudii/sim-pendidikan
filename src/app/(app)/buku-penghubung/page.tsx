@@ -3,20 +3,23 @@ import { useState } from "react";
 import { useStore } from "@/lib/store";
 import { canEditGroup, canSeeStudent, myStudentIds } from "@/lib/access";
 import type { Note } from "@/lib/types";
+import { useUser } from "@/lib/useUser";
 
 const fmt = (iso: string) =>
   new Date(iso).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" });
 
 export default function BukuPenghubung() {
-  const { data, currentUserId, addNote } = useStore();
-  const user = data.users[currentUserId];
+  const { data, addNote } = useStore();
+  const user = useUser();
   const [sid, setSid] = useState("");
   const [text, setText] = useState("");
   const [msg, setMsg] = useState("");
 
   const students = myStudentIds(data, user).map((id) => data.students[id]);
   const studentId = students.some((s) => s.id === sid) ? sid : students[0]?.id;
-  const notes = data.notes.filter((n) => canSeeStudent(data, user, n.studentId));
+  const notes = data.notes.filter((n) =>
+    canSeeStudent(data, user, n.studentId),
+  );
 
   function send() {
     if (!studentId) return;
@@ -38,7 +41,9 @@ export default function BukuPenghubung() {
             onChange={(e) => setSid(e.target.value)}
           >
             {students.map((s) => (
-              <option key={s.id} value={s.id}>{s.name}</option>
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
             ))}
           </select>
           <textarea
@@ -49,7 +54,10 @@ export default function BukuPenghubung() {
             value={text}
             onChange={(e) => setText(e.target.value)}
           />
-          <button className="mt-2 rounded bg-teal-700 px-3 py-2 text-sm text-white" onClick={send}>
+          <button
+            className="mt-2 rounded bg-teal-700 px-3 py-2 text-sm text-white"
+            onClick={send}
+          >
             Kirim catatan
           </button>
           {msg && <p className="mt-2 text-sm text-red-700">{msg}</p>}
@@ -103,7 +111,10 @@ function NoteCard({ note }: { note: Note }) {
       <p className="whitespace-pre-wrap text-sm">{note.text}</p>
 
       {user.role === "wali" && !note.readAt && (
-        <button className="mt-2 rounded border px-2.5 py-1 text-sm" onClick={() => markNoteRead(note.id)}>
+        <button
+          className="mt-2 rounded border px-2.5 py-1 text-sm"
+          onClick={() => markNoteRead(note.id)}
+        >
           Tandai dibaca
         </button>
       )}
@@ -130,7 +141,10 @@ function NoteCard({ note }: { note: Note }) {
             maxLength={1000}
             onChange={(e) => setText(e.target.value)}
           />
-          <button className="rounded border px-3 py-1.5 text-sm" onClick={reply}>
+          <button
+            className="rounded border px-3 py-1.5 text-sm"
+            onClick={reply}
+          >
             Balas
           </button>
         </div>

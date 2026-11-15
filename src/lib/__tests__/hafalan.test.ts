@@ -41,4 +41,10 @@ describe("hafalan", () => {
     expect(findOverlap(recs, "s5", 2, 1, 10)).toBeUndefined();
     expect(findOverlap(recs, "s4", 3, 1, 10)).toBeUndefined();
   });
+    it("surah manual dihitung sebagai ayat tetapi tidak masuk juz dan tumpang tindih", () => {
+    const recs = [rec({ surahNo: 0, surah: "سورة خاصة", from: 1, to: 10 })];
+    expect(totalMemorized(recs, "s4")).toBe(10);
+    expect(juzSummary(recs, "s4")).toEqual({ complete: [], partial: [] });
+    expect(findOverlap(recs, "s4", 0, 1, 10)).toBeUndefined();
+  });
 });

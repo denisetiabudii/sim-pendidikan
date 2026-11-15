@@ -3,14 +3,15 @@ import { useState } from "react";
 import { useStore } from "@/lib/store";
 import { canSeeStudent, canViewIncident, myStudentIds } from "@/lib/access";
 import type { Incident, IncidentStatus } from "@/lib/types";
+import { useUser } from "@/lib/useUser";
 
 const STATUSES: IncidentStatus[] = ["Baru", "Ditindaklanjuti", "Selesai"];
 const fmt = (iso: string) =>
   new Date(iso).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" });
 
 export default function Kejadian() {
-  const { data, currentUserId, addIncident, openIncident } = useStore();
-  const user = data.users[currentUserId];
+  const { data, addIncident, openIncident } = useStore();
+  const user = useUser();
   const canCreate = user.role === "pendidik" || user.role === "kepala";
 
   const students = myStudentIds(data, user).map((id) => data.students[id]);

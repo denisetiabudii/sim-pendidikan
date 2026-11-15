@@ -5,14 +5,15 @@ import { myGroupIds, myStudentIds } from "@/lib/access";
 import { STATUSES } from "@/lib/constants";
 import type { AttendanceStatus } from "@/lib/types";
 import { useToday } from "@/lib/useToday";
+import { useUser } from "@/lib/useUser";
 
 export default function Absensi() {
-  const { data, currentUserId, recordAttendance } = useStore();
-  const user = data.users[currentUserId];
+  const { data, recordAttendance } = useStore();
+  const user = useUser();
 
   const groups = myGroupIds(data, user);
   const [groupId, setGroupId] = useState("");
-    const today = useToday();
+  const today = useToday();
   const [pickedDate, setPickedDate] = useState("");
   const date = pickedDate || today;
   const [draft, setDraft] = useState<Record<string, AttendanceStatus>>({});
@@ -27,7 +28,7 @@ export default function Absensi() {
   function save(studentId: string) {
     if (!date) return;
     const existing = data.attendance.find(
-      (a) => a.studentId === studentId && a.groupId === gid && a.date === date
+      (a) => a.studentId === studentId && a.groupId === gid && a.date === date,
     );
     const status = draft[studentId] ?? existing?.status ?? "Hadir";
     let reason: string | undefined;
@@ -38,11 +39,13 @@ export default function Absensi() {
     setMsg(r.ok ? "Tersimpan" : r.error);
   }
 
-    function markAll() {
+  function markAll() {
     if (!date) return;
     let n = 0;
     for (const s of students) {
-      const has = data.attendance.some((a) => a.studentId === s.id && a.groupId === gid && a.date === date);
+      const has = data.attendance.some(
+        (a) => a.studentId === s.id && a.groupId === gid && a.date === date,
+      );
       if (!has && recordAttendance(s.id, date, "Hadir").ok) n++;
     }
     setMsg(n ? `${n} peserta ditandai Hadir.` : "Semua peserta sudah terisi.");
@@ -64,14 +67,17 @@ export default function Absensi() {
             </option>
           ))}
         </select>
-                <input
+        <input
           type="date"
           className="rounded border bg-white p-2"
           value={date}
           onChange={(e) => setPickedDate(e.target.value)}
         />
-                {(user.role === "pendidik" || user.role === "kepala") && (
-          <button className="rounded border bg-white px-3 py-2 text-sm" onClick={markAll}>
+        {(user.role === "pendidik" || user.role === "kepala") && (
+          <button
+            className="rounded border bg-white px-3 py-2 text-sm"
+            onClick={markAll}
+          >
             Hadirkan semua yang belum diisi
           </button>
         )}
@@ -90,18 +96,26 @@ export default function Absensi() {
           <tbody>
             {students.map((s) => {
               const rec = data.attendance.find(
-                (a) => a.studentId === s.id && a.groupId === gid && a.date === date
+                (a) =>
+                  a.studentId === s.id && a.groupId === gid && a.date === date,
               );
               return (
                 <tr key={s.id} className="border-t">
                   <td className="p-2">{s.name}</td>
-                  <td className="p-2">{rec?.status ?? <span className="text-slate-400">belum diisi</span>}</td>
+                  <td className="p-2">
+                    {rec?.status ?? (
+                      <span className="text-slate-400">belum diisi</span>
+                    )}
+                  </td>
                   <td className="p-2">
                     <select
                       className="rounded border p-1.5"
                       value={draft[s.id] ?? rec?.status ?? "Hadir"}
                       onChange={(e) =>
-                        setDraft({ ...draft, [s.id]: e.target.value as AttendanceStatus })
+                        setDraft({
+                          ...draft,
+                          [s.id]: e.target.value as AttendanceStatus,
+                        })
                       }
                     >
                       {STATUSES.map((st) => (
@@ -126,7 +140,8 @@ export default function Absensi() {
 
       {msg && <p className="mt-3 text-sm">{msg}</p>}
       <p className="mt-2 text-sm text-slate-500">
-        Satu catatan per peserta, kelompok, dan tanggal. Koreksi wajib disertai alasan.
+        Satu catatan per peserta, kelompok, dan tanggal. Koreksi wajib disertai
+        alasan.
       </p>
     </div>
   );

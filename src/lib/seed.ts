@@ -2,12 +2,12 @@ import type { AppData } from "./types";
 
 export const seed = (): AppData => ({
   users: {
-    u1: { id: "u1", name: "Direktur Amal Pendidikan", role: "direktur" },
-    u2: { id: "u2", name: "Kepala TKQ", role: "kepala", unit: "TKQ" },
-    u3: { id: "u3", name: "Ustadzah Aisyah (guru TKQ)", role: "pendidik", groupIds: ["TKA"] },
-    u4: { id: "u4", name: "Ustadz Hamzah (murabbi RTQ)", role: "pendidik", groupIds: ["H1"] },
-    u5: { id: "u5", name: "Kepala RTQ", role: "kepala", unit: "RTQ" },
-    u6: { id: "u6", name: "Bapak Budi (wali)", role: "wali", childIds: ["s1", "s4"] },
+    u1: { id: "u1", username: "direktur", name: "Direktur Amal Pendidikan", role: "direktur" },
+    u2: { id: "u2", username: "kepala.tkq", name: "Kepala TKQ", role: "kepala", unit: "TKQ" },
+    u3: { id: "u3", username: "aisyah", name: "Ustadzah Aisyah (guru TKQ)", role: "pendidik", groupIds: ["TKA"] },
+    u4: { id: "u4", username: "hamzah", name: "Ustadz Hamzah (murabbi RTQ)", role: "pendidik", groupIds: ["H1"] },
+    u5: { id: "u5", username: "kepala.rtq", name: "Kepala RTQ", role: "kepala", unit: "RTQ" },
+    u6: { id: "u6", username: "budi", name: "Bapak Budi (wali)", role: "wali", childIds: ["s1", "s4"] },
   },
   groups: {
     TKA: { id: "TKA", name: "Kelas A", unit: "TKQ" },
@@ -38,17 +38,36 @@ export const seed = (): AppData => ({
     ],
   },
   attendance: [],
-    scores: {},
+  scores: {},
   reports: {},
-    notes: [],
-      // Contoh. Daftar resmi dan tingkat kerahasiaan menunggu keputusan pimpinan.
+  notes: [],
+  // Contoh. Daftar resmi dan tingkat kerahasiaan menunggu keputusan pimpinan.
   incidentCategories: [
     { name: "Kesehatan ringan", level: "biasa" },
     { name: "Perselisihan antar anak", level: "biasa" },
     { name: "Perlindungan anak", level: "sensitif" },
   ],
   incidents: [],
-    imports: [],
-      recitations: [],
+  imports: [],
+  recitations: [],
+  rtqReports: {},
+  // Isi awal diambil dari contoh lembar evaluasi klien. Konfirmasi dengan klien.
+  institution: {
+    name: "Rumah Tahfidz Madinatul Quran",
+    nomorStatistik: "411232059154",
+    address:
+      "Jl. H. Hasan Arif, Perum Banyuherang Blok A No. 5, Desa Cipicung, Kec. Banyuresmi, Kab. Garut",
+    city: "Garut",
+    mudir: "M. Rofiqul Khairi, S.Pd., M.Pd.",
+  },
+  // Tanggal kuartal masih asumsi.
+  academic: {
+    year: "2026/2027",
+    quarters: [
+      { start: "2026-07-01", end: "2026-10-31", signDate: "2026-10-31" },
+      { start: "2026-11-01", end: "2027-02-28", signDate: "2027-02-28" },
+      { start: "2027-03-01", end: "2027-06-30", signDate: "2027-06-30" },
+    ],
+  },
   audit: [],
 });

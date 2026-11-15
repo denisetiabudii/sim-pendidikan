@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SURAHS, TOTAL_AYAT, JUZ_START, juzBounds, juzOf, surahByNo, surahsInJuz, validateAyatRange } from "../quran";
+import { SURAHS, SURAH_AR, matchSurah, TOTAL_AYAT, JUZ_START, juzBounds, juzOf, surahByNo, surahLabel, surahOption, surahsInJuz, validateAyatRange } from "../quran";
 
 describe("data surah", () => {
   it("114 surah dengan total 6.236 ayat", () => {
@@ -86,6 +86,39 @@ describe("surahsInJuz", () => {
     let total = 0;
     for (let j = 1; j <= 30; j++) for (const x of surahsInJuz(j)) total += x.to - x.from + 1;
     expect(total).toBe(6236);
+  });
+});
+describe("label surah Arab", () => {
+  it("memakai nama Arab dari satu sumber, dan nama manual bila nomor 0", () => {
+    expect(surahLabel(114)).toBe("الناس");
+    expect(surahLabel(0, "سورة خاصة")).toBe("سورة خاصة");
+  });
+  it("teks dropdown mengisolasi bagian Arab agar urutan tidak terbalik", () => {
+    expect(surahOption(2, "286 ayat")).toBe("2. \u2067البقرة\u2069 · 286 ayat");
+  });
+});
+describe("matchSurah", () => {
+  it("setiap nama Arab dan Latin di daftar cocok dengan surahnya sendiri", () => {
+    for (let i = 0; i < 114; i++) {
+      expect(matchSurah(SURAH_AR[i])).toBe(i + 1);
+      expect(matchSurah(SURAHS[i][0])).toBe(i + 1);
+    }
+  });
+  it("toleran terhadap harakat, ال, hamzah, spasi, dan kapital", () => {
+    expect(matchSurah("البَقَرَة")).toBe(2);
+    expect(matchSurah("بقرة")).toBe(2);
+    expect(matchSurah("آل عمران")).toBe(3);
+    expect(matchSurah("al baqarah")).toBe(2);
+    expect(matchSurah("BAQARAH")).toBe(2);
+    expect(matchSurah("ali imran")).toBe(3);
+    expect(matchSurah("ص")).toBe(38);
+  });
+  it("mengenali nama alternatif, dan menolak yang tidak dikenal", () => {
+    expect(matchSurah("اللهب")).toBe(111);
+    expect(matchSurah("براءة")).toBe(9);
+    expect(matchSurah("سورة خاصة")).toBe(0);
+    expect(matchSurah("xyz")).toBe(0);
+    expect(matchSurah("  ")).toBe(0);
   });
 });
 });

@@ -2,11 +2,17 @@
 import { useState } from "react";
 import { useStore } from "@/lib/store";
 import { myGroupIds, myStudentIds } from "@/lib/access";
-import { finalScore, isScoreLocked, predicate, weightsTotal } from "@/lib/grades";
+import {
+  finalScore,
+  isScoreLocked,
+  predicate,
+  weightsTotal,
+} from "@/lib/grades";
+import { useUser } from "@/lib/useUser";
 
 export default function Nilai() {
-  const { data, currentUserId, setScore } = useStore();
-  const user = data.users[currentUserId];
+  const { data, setScore } = useStore();
+  const user = useUser();
   const groups = myGroupIds(data, user);
   const [groupId, setGroupId] = useState("");
   const [msg, setMsg] = useState("");
@@ -44,7 +50,8 @@ export default function Nilai() {
 
       {total !== 100 && (
         <p className="mb-3 rounded border border-red-300 bg-red-50 p-2 text-sm text-red-800">
-          Total bobot {unit} adalah {total}%, harus 100%. Nilai akhir tidak dihitung sampai diperbaiki.
+          Total bobot {unit} adalah {total}%, harus 100%. Nilai akhir tidak
+          dihitung sampai diperbaiki.
         </p>
       )}
 
@@ -92,8 +99,12 @@ export default function Nilai() {
                   })}
                   <td className="p-2">
                     <b>{fin ?? "–"}</b>
-                    <div className="text-xs text-slate-500">{predicate(fin)}</div>
-                    {locked && <div className="text-xs text-amber-700">terkunci</div>}
+                    <div className="text-xs text-slate-500">
+                      {predicate(fin)}
+                    </div>
+                    {locked && (
+                      <div className="text-xs text-amber-700">terkunci</div>
+                    )}
                   </td>
                 </tr>
               );
@@ -104,8 +115,8 @@ export default function Nilai() {
 
       {msg && <p className="mt-3 text-sm text-red-700">{msg}</p>}
       <p className="mt-2 text-sm text-slate-500">
-        Nilai tersimpan saat kolom ditinggalkan. Bobot dan predikat masih contoh sampai formula
-        resmi disahkan.
+        Nilai tersimpan saat kolom ditinggalkan. Bobot dan predikat masih contoh
+        sampai formula resmi disahkan.
       </p>
     </div>
   );
