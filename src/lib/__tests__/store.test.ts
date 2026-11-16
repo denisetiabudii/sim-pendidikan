@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useStore } from "../store";
 import { seed } from "../seed";
+import { demoData } from "../demo";
 
 const st = () => useStore.getState();
 const fresh = (userId: string) =>
@@ -282,16 +283,31 @@ describe("setoran hafalan", () => {
     ).toMatchObject({ ok: false });
     expect(st().data.recitations).toHaveLength(1);
   });
-    it("nama manual yang cocok dihitung sebagai surah biasa", () => {
+  it("nama manual yang cocok dihitung sebagai surah biasa", () => {
     login("u4");
-    expect(st().addRecitation(rec("s4", { surahNo: 0, surahName: "الإخلاص", from: 1, to: 4 })).ok).toBe(true);
-    expect(st().data.recitations[0]).toMatchObject({ surahNo: 112, surah: "Al-Ikhlas" });
-    expect(st().addRecitation(rec("s4", { surahNo: 0, surahName: "الإخلاص", from: 1, to: 5 }))).toMatchObject({
+    expect(
+      st().addRecitation(
+        rec("s4", { surahNo: 0, surahName: "الإخلاص", from: 1, to: 4 }),
+      ).ok,
+    ).toBe(true);
+    expect(st().data.recitations[0]).toMatchObject({
+      surahNo: 112,
+      surah: "Al-Ikhlas",
+    });
+    expect(
+      st().addRecitation(
+        rec("s4", { surahNo: 0, surahName: "الإخلاص", from: 1, to: 5 }),
+      ),
+    ).toMatchObject({
       ok: false,
       error: expect.stringContaining("hanya memiliki 4 ayat"),
     });
     // mengulang ayat yang sama sebagai setoran baru memicu peringatan tumpang tindih
-    expect(st().addRecitation(rec("s4", { surahNo: 0, surahName: "اخلاص", from: 1, to: 4 }))).toMatchObject({
+    expect(
+      st().addRecitation(
+        rec("s4", { surahNo: 0, surahName: "اخلاص", from: 1, to: 4 }),
+      ),
+    ).toMatchObject({
       ok: false,
       code: "overlap",
     });
@@ -412,6 +428,89 @@ describe("setoran hafalan", () => {
         status: "draft",
         version: 2,
       });
+    });
+  });
+  describe("identitas lembaga dan kuartal", () => {
+    it("hanya direktur yang boleh mengubah identitas", () => {
+      login("u2");
+      expect(st().saveInstitution({ name: "X" })).toMatchObject(denied);
+      login("u1");
+      expect(st().saveInstitution({ name: "Rumah Tahfidz Baru" }).ok).toBe(
+        true,
+      );
+      expect(st().data.institution.name).toBe("Rumah Tahfidz Baru");
+      expect(st().saveInstitution({ name: "  " })).toMatchObject({ ok: false });
+    });
+    it("logo harus PNG, JPG, atau WebP dan tidak terlalu besar, dan datanya tidak masuk audit", () => {
+      login("u1");
+      expect(
+        st().saveInstitution({ logoDataUrl: "data:image/svg+xml;base64,AAAA" }),
+      ).toMatchObject({ ok: false });
+      expect(
+        st().saveInstitution({
+          logoDataUrl: "data:image/png;base64," + "A".repeat(500_000),
+        }),
+      ).toMatchObject({ ok: false });
+      expect(
+        st().saveInstitution({
+          logoDataUrl: "data:image/png;base64,iVBORw0KGgo=",
+        }).ok,
+      ).toBe(true);
+      expect(st().data.institution.logoDataUrl).toBeDefined();
+      expect(st().saveInstitution({ logoDataUrl: "" }).ok).toBe(true);
+      expect(st().data.institution.logoDataUrl).toBeUndefined();
+      expect(JSON.stringify(st().data.audit)).not.toContain("iVBOR");
+    });
+    it("validasi tahun ajaran dan tanggal kuartal", () => {
+      login("u1");
+      const a = st().data.academic;
+      const q = a.quarters.map((x) => ({ ...x }));
+      expect(st().saveAcademic("2026/2028", q)).toMatchObject({ ok: false });
+      expect(st().saveAcademic(a.year, [q[0], q[1]])).toMatchObject({
+        ok: false,
+      });
+      expect(
+        st().saveAcademic(a.year, [{ ...q[0], end: "2026-06-01" }, q[1], q[2]]),
+      ).toMatchObject({ ok: false });
+      expect(
+        st().saveAcademic(a.year, [
+          q[0],
+          { ...q[1], start: "2026-10-01" },
+          q[2],
+        ]),
+      ).toMatchObject({ ok: false });
+      expect(
+        st().saveAcademic(a.year, [
+          { ...q[0], start: "2026-13-45" },
+          q[1],
+          q[2],
+        ]),
+      ).toMatchObject({ ok: false });
+      expect(
+        st().saveAcademic(a.year, [{ ...q[0], end: "2026-10-30" }, q[1], q[2]])
+          .ok,
+      ).toBe(true);
+      login("u5");
+      expect(st().saveAcademic(a.year, q)).toMatchObject(denied);
+    });
+    it("tanggal kuartal terkunci bila sudah ada rapor yang diajukan, tanggal tanda tangan tidak", () => {
+      useStore.setState({ data: demoData("2026-11-15"), currentUserId: "u1" });
+      const a = st().data.academic;
+      const q = a.quarters.map((x) => ({ ...x }));
+      expect(
+        st().saveAcademic(a.year, [{ ...q[0], end: "2026-10-30" }, q[1], q[2]]),
+      ).toMatchObject({
+        ok: false,
+        error: expect.stringContaining("terkunci"),
+      });
+      expect(
+        st().saveAcademic(a.year, [
+          { ...q[0], signDate: "2026-11-05" },
+          q[1],
+          q[2],
+        ]).ok,
+      ).toBe(true);
+      expect(st().saveAcademic("2027/2028", q)).toMatchObject({ ok: false });
     });
   });
 });

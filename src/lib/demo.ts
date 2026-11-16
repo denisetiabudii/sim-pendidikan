@@ -308,5 +308,29 @@ export function demoData(today: string): AppData {
     catatan: "Sering-sering murojaah ya, semangat!",
     absence: { sakit: 2, izin: 1, tanpa: 0 },
   };
+
+  d.notes.unshift({
+    id: "n4",
+    studentId: "s5",
+    authorId: "u4",
+    at: now,
+    replies: [],
+    text: "Rafi semangat menyetor Surah An-Naba. Mohon dukungan murojaah di rumah.",
+  });
+  d.incidents.unshift({
+    id: "i3",
+    studentId: "s5",
+    authorId: "u4",
+    category: "Perselisihan antar anak",
+    level: "biasa",
+    occurredAt: `${addDays(today, -1)}T04:00:00.000Z`,
+    location: "Ruang halaqoh",
+    chronology:
+      "Rafi dan Farhan berebut tempat duduk. Keduanya diingatkan dan sudah saling meminta maaf.",
+    initialAction: "Dilerai dan didamaikan oleh murabbi.",
+    status: "Baru",
+    followUp: "",
+    createdAt: `${addDays(today, -1)}T04:00:00.000Z`,
+  });
   return d;
 }

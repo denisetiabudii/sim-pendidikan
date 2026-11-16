@@ -20,6 +20,8 @@ import type {
   Unit,
   Quarter,
   RtqReport,
+  Academic,
+  Institution,
 } from "./types";
 import { importBatchInUse, MAX_ROWS, validateRows } from "./csv";
 import { RECITATION_KINDS, RECITATION_QUALITIES } from "./constants";
@@ -33,7 +35,8 @@ import {
   resolveManualRows,
   rtqKey,
   validateTahfidzRows,
-} from "./rtq";import { DEMO_PASSWORD, eligible, findByUsername } from "./session";
+} from "./rtq";
+import { DEMO_PASSWORD, eligible, findByUsername } from "./session";
 import type { Entry } from "./session";
 
 export interface Session {
@@ -57,7 +60,7 @@ interface State {
   signIn: (username: string, password: string, entry: Entry) => Result;
   chooseGroups: (groupIds: string[]) => Result;
   resetGroups: () => void;
-  signOut: () => void; 
+  signOut: () => void;
   login: (id: string) => void;
   recordAttendance: (
     studentId: string,
@@ -122,10 +125,28 @@ interface State {
     action: ReportAction,
     reason?: string,
   ) => Result;
+  saveInstitution: (patch: Partial<Institution>) => Result;
+  saveAcademic: (year: string, quarters: Academic["quarters"]) => Result;
   reset: () => void;
 }
 
 const denied = { ok: false as const, error: "Ditolak: di luar penugasan Anda" };
+const INS_FIELDS = {
+  name: ["Nama lembaga", 100],
+  nomorStatistik: ["Nomor statistik", 30],
+  address: ["Alamat", 200],
+  city: ["Kota", 50],
+  mudir: ["Nama mudir", 100],
+} as const;
+
+const isDate = (d: string) => {
+  const t = new Date(`${d}T00:00:00Z`);
+  return (
+    /^\d{4}-\d{2}-\d{2}$/.test(d) &&
+    !Number.isNaN(t.getTime()) &&
+    t.toISOString().slice(0, 10) === d
+  );
+};
 
 export const useStore = create<State>()(
   persist(
@@ -151,7 +172,7 @@ export const useStore = create<State>()(
       return {
         data: seed(),
         currentUserId: "u3",
-                session: null,
+        session: null,
         login: (id) => set({ currentUserId: id }),
 
         recordAttendance: (studentId, date, status, reason) => {
@@ -406,17 +427,43 @@ export const useStore = create<State>()(
           const clean = name.trim();
           if (!clean) return { ok: false, error: "Nama wajib diisi" };
 
-                    const id = `u-${crypto.randomUUID().slice(0, 8)}`;
+          const id = `u-${crypto.randomUUID().slice(0, 8)}`;
           const base =
-            clean.toLowerCase().replace(/\(.*?\)/g, "").trim().replace(/^(ustadz|ustadzah|ibu|bapak)\s+/, "")
-              .split(/\s+/)[0].replace(/[^a-z0-9]/g, "") || "guru";
+            clean
+              .toLowerCase()
+              .replace(/\(.*?\)/g, "")
+              .trim()
+              .replace(/^(ustadz|ustadzah|ibu|bapak)\s+/, "")
+              .split(/\s+/)[0]
+              .replace(/[^a-z0-9]/g, "") || "guru";
           let username = base;
-          for (let n = 2; Object.values(data.users).some((u) => u.username === username); n++) username = `${base}${n}`;
+          for (
+            let n = 2;
+            Object.values(data.users).some((u) => u.username === username);
+            n++
+          )
+            username = `${base}${n}`;
           set({
             data: {
               ...data,
-              users: { ...data.users, [id]: { id, username, name: clean, role: "pendidik", unit, groupIds: [] } },
-              audit: audit(data, user.name, "Tambah pendidik", unit, `${clean} (@${username})`),
+              users: {
+                ...data.users,
+                [id]: {
+                  id,
+                  username,
+                  name: clean,
+                  role: "pendidik",
+                  unit,
+                  groupIds: [],
+                },
+              },
+              audit: audit(
+                data,
+                user.name,
+                "Tambah pendidik",
+                unit,
+                `${clean} (@${username})`,
+              ),
             },
           });
           return { ok: true };
@@ -916,7 +963,142 @@ export const useStore = create<State>()(
           return { ok: true };
         },
 
-                loadDemo: (today) => set({ data: demoData(today) }), // sesi tetap, semua akun ada di data demo
+        saveInstitution: (patch) => {
+          const { data, currentUserId } = get();
+          const user = data.users[currentUserId];
+          if (user.role !== "direktur") return denied;
+
+          const next = { ...data.institution, ...patch };
+          if (next.logoDataUrl === "") delete next.logoDataUrl;
+          for (const k of Object.keys(
+            INS_FIELDS,
+          ) as (keyof typeof INS_FIELDS)[]) {
+            const [label, max] = INS_FIELDS[k];
+            if (!next[k].trim() || next[k].length > max)
+              return {
+                ok: false,
+                error: `${label} wajib diisi (maks ${max} karakter)`,
+              };
+          }
+          if (next.logoDataUrl) {
+            if (
+              !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(
+                next.logoDataUrl,
+              )
+            )
+              return {
+                ok: false,
+                error: "Logo harus berupa gambar PNG, JPG, atau WebP",
+              };
+            if (next.logoDataUrl.length > 400_000)
+              return {
+                ok: false,
+                error: "Ukuran logo terlalu besar (maksimal sekitar 300 KB)",
+              };
+          }
+
+          const changed = (Object.keys(patch) as (keyof Institution)[])
+            .filter((k) => (patch[k] || undefined) !== data.institution[k])
+            .map((k) => (k === "logoDataUrl" ? "logo" : k));
+          if (changed.length === 0) return { ok: true };
+
+          set({
+            data: {
+              ...data,
+              institution: next,
+              audit: audit(
+                data,
+                user.name,
+                "Ubah identitas lembaga",
+                "Kop rapor",
+                changed.join(", "),
+              ),
+            },
+          });
+          return { ok: true };
+        },
+
+        saveAcademic: (year, quarters) => {
+          const { data, currentUserId } = get();
+          const user = data.users[currentUserId];
+          if (user.role !== "direktur") return denied;
+
+          const m = /^(\d{4})\/(\d{4})$/.exec(year);
+          if (!m || Number(m[2]) !== Number(m[1]) + 1)
+            return {
+              ok: false,
+              error:
+                "Tahun ajaran harus berbentuk 2026/2027 (dua tahun berurutan)",
+            };
+          if (quarters.length !== 3)
+            return { ok: false, error: "Harus ada 3 kuartal" };
+          for (const [i, q] of quarters.entries()) {
+            if (![q.start, q.end, q.signDate].every(isDate))
+              return {
+                ok: false,
+                error: `Kuartal ${i + 1}: tanggal tidak valid`,
+              };
+            if (q.end < q.start)
+              return {
+                ok: false,
+                error: `Kuartal ${i + 1}: tanggal akhir sebelum tanggal awal`,
+              };
+            if (q.signDate < q.start)
+              return {
+                ok: false,
+                error: `Kuartal ${i + 1}: tanggal tanda tangan sebelum kuartal dimulai`,
+              };
+            if (i > 0 && q.start <= quarters[i - 1].end)
+              return {
+                ok: false,
+                error: `Kuartal ${i + 1} tumpang tindih dengan kuartal sebelumnya`,
+              };
+          }
+
+          const old = data.academic;
+          const reports = Object.values(data.rtqReports);
+          if (year !== old.year && reports.length > 0)
+            return {
+              ok: false,
+              error:
+                "Sudah ada rapor di tahun ajaran ini. Pergantian tahun ajaran perlu proses tersendiri.",
+            };
+          for (let i = 0; i < 3; i++) {
+            const changedRange =
+              old.quarters[i].start !== quarters[i].start ||
+              old.quarters[i].end !== quarters[i].end;
+            if (
+              changedRange &&
+              reports.some(
+                (r) =>
+                  r.year === old.year &&
+                  r.quarter === i + 1 &&
+                  r.status !== "draft",
+              )
+            )
+              return {
+                ok: false,
+                error: `Tanggal Kuartal ${i + 1} terkunci karena sudah ada rapor yang diajukan atau terbit.`,
+              };
+          }
+
+          set({
+            data: {
+              ...data,
+              academic: { year, quarters },
+              audit: audit(
+                data,
+                user.name,
+                "Ubah tahun ajaran dan kuartal",
+                year,
+                "Tanggal kuartal diperbarui",
+              ),
+            },
+          });
+          return { ok: true };
+        },
+
+        loadDemo: (today) => set({ data: demoData(today) }), // sesi tetap, semua akun ada di data demo
         saveRtqDraft: (studentId, quarter, content) => {
           const { data, currentUserId } = get();
           const user = data.users[currentUserId];
@@ -1060,15 +1242,25 @@ export const useStore = create<State>()(
           });
           return { ok: true };
         },
-                signIn: (username, password, entry) => {
+        signIn: (username, password, entry) => {
           const { data } = get();
           const u = findByUsername(data, username);
           if (!u || password !== DEMO_PASSWORD || !eligible(data, u, entry))
-            return { ok: false, error: "Username atau password salah, atau akun tidak terdaftar di bagian ini." };
+            return {
+              ok: false,
+              error:
+                "Username atau password salah, atau akun tidak terdaftar di bagian ini.",
+            };
           set({
             currentUserId: u.id,
-            session: { unit: entry === "TKQ" || entry === "RTQ" ? entry : undefined, groupIds: [] },
-            data: { ...data, audit: audit(data, u.name, "Masuk", "Sistem", entry) },
+            session: {
+              unit: entry === "TKQ" || entry === "RTQ" ? entry : undefined,
+              groupIds: [],
+            },
+            data: {
+              ...data,
+              audit: audit(data, u.name, "Masuk", "Sistem", entry),
+            },
           });
           return { ok: true };
         },
@@ -1079,7 +1271,11 @@ export const useStore = create<State>()(
           if (!session || !user || user.role !== "pendidik") return denied;
           const own = user.groupIds ?? [];
           if (groupIds.length === 0 || groupIds.some((g) => !own.includes(g)))
-            return { ok: false, error: "Pilih minimal satu kelas atau halaqoh yang ditugaskan kepada Anda" };
+            return {
+              ok: false,
+              error:
+                "Pilih minimal satu kelas atau halaqoh yang ditugaskan kepada Anda",
+            };
           set({ session: { ...session, groupIds } });
           return { ok: true };
         },
@@ -1090,9 +1286,9 @@ export const useStore = create<State>()(
         },
 
         signOut: () => set({ session: null }),
-                reset: () => set({ data: seed(), currentUserId: "u3", session: null }),
+        reset: () => set({ data: seed(), currentUserId: "u3", session: null }),
       };
     },
-{ name: "simp-next-v9", skipHydration: true }
+    { name: "simp-next-v10", skipHydration: true },
   ),
 );

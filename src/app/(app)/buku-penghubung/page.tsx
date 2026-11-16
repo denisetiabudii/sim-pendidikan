@@ -4,6 +4,8 @@ import { useStore } from "@/lib/store";
 import { canEditGroup, canSeeStudent, myStudentIds } from "@/lib/access";
 import type { Note } from "@/lib/types";
 import { useUser } from "@/lib/useUser";
+import StudentGroups from "@/components/StudentGroups";
+import type { GroupEntry } from "@/components/StudentGroups";
 
 const fmt = (iso: string) =>
   new Date(iso).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" });
@@ -20,6 +22,17 @@ export default function BukuPenghubung() {
   const notes = data.notes.filter((n) =>
     canSeeStudent(data, user, n.studentId),
   );
+  const entries: GroupEntry[] = students.map((s) => {
+    const mine = notes.filter((n) => n.studentId === s.id);
+    return {
+      id: s.id,
+      name: s.name,
+      sub: `${data.groups[s.groupId].unit} · ${data.groups[s.groupId].name}`,
+      total: mine.length,
+      flag: user.role === "wali" ? mine.filter((n) => !n.readAt).length : 0,
+      latest: mine.reduce((a, n) => (n.at > a ? n.at : a), ""),
+    };
+  });
 
   function send() {
     if (!studentId) return;
@@ -64,18 +77,20 @@ export default function BukuPenghubung() {
         </section>
       )}
 
-      <div className="space-y-3">
-        {notes.map((n) => (
-          <NoteCard key={n.id} note={n} />
-        ))}
-        {notes.length === 0 && (
-          <p className="rounded border bg-white p-3 text-sm text-slate-500">
-            {user.role === "pendidik"
-              ? "Belum ada catatan. Kirim catatan pertama dari formulir di atas."
-              : "Belum ada catatan dalam cakupan Anda."}
-          </p>
-        )}
-      </div>
+      <StudentGroups
+        entries={entries}
+        flagLabel="belum dibaca"
+        empty={
+          user.role === "pendidik"
+            ? "Belum ada catatan. Kirim catatan pertama dari formulir di atas."
+            : "Belum ada catatan dalam cakupan Anda."
+        }
+        render={(id) =>
+          notes
+            .filter((n) => n.studentId === id)
+            .map((n) => <NoteCard key={n.id} note={n} />)
+        }
+      />
     </div>
   );
 }

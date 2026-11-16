@@ -31,6 +31,7 @@ import type {
   RtqSurahRow,
 } from "@/lib/types";
 import { useUser } from "@/lib/useUser";
+import { reportTasks } from "@/lib/dashboard";
 
 const ASPECTS = [
   ["akhlak", "tuturKata", "Tutur Kata"],
@@ -45,8 +46,8 @@ export default function RaporKuartal() {
   const user = useUser();
   const today = useToday();
   const [picked, setPicked] = useState<0 | Quarter>(0);
-  const quarter = (picked ||
-    (today ? currentQuarter(data.academic, today) : 1)) as Quarter;
+  const firstRtqTask = reportTasks(data, user, myStudentIds(data, user)).find((t) => t.unit === "RTQ")?.quarter;
+  const quarter = (picked || firstRtqTask || (today ? currentQuarter(data.academic, today) : 1)) as Quarter;
   const [open, setOpen] = useState<{
     id: string;
     mode: "edit" | "view";
@@ -62,6 +63,7 @@ export default function RaporKuartal() {
   );
 
   function act(id: string, action: ReportAction) {
+        setPicked(quarter);
     let reason: string | undefined;
     if (
       action === "publish" &&

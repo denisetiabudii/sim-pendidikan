@@ -4,6 +4,8 @@ import { useStore } from "@/lib/store";
 import { canSeeStudent, canViewIncident, myStudentIds } from "@/lib/access";
 import type { Incident, IncidentStatus } from "@/lib/types";
 import { useUser } from "@/lib/useUser";
+import StudentGroups from "@/components/StudentGroups";
+import type { GroupEntry } from "@/components/StudentGroups";
 
 const STATUSES: IncidentStatus[] = ["Baru", "Ditindaklanjuti", "Selesai"];
 const fmt = (iso: string) =>
@@ -38,6 +40,17 @@ export default function Kejadian() {
             !canViewIncident(data, user, i),
         ).length
       : 0;
+  const entries: GroupEntry[] = students.map((s) => {
+    const mine = visible.filter((i) => i.studentId === s.id);
+    return {
+      id: s.id,
+      name: s.name,
+      sub: `${data.groups[s.groupId].unit} · ${data.groups[s.groupId].name}`,
+      total: mine.length,
+      flag: mine.filter((i) => i.status === "Baru").length,
+      latest: mine.reduce((a, i) => (i.createdAt > a ? i.createdAt : a), ""),
+    };
+  });
 
   function save() {
     if (!studentId || !cat) return;
@@ -153,22 +166,24 @@ export default function Kejadian() {
         </p>
       )}
 
-      <div className="space-y-3">
-        {visible.map((i) => (
-          <IncidentCard
-            key={i.id}
-            incident={i}
-            expanded={openId === i.id}
-            onOpen={() => open(i.id)}
-            onClose={() => setOpenId(null)}
-          />
-        ))}
-        {visible.length === 0 && (
-          <p className="rounded border bg-white p-3 text-sm text-slate-500">
-            Belum ada catatan kejadian dalam cakupan Anda.
-          </p>
-        )}
-      </div>
+      <StudentGroups
+        entries={entries}
+        flagLabel="baru"
+        empty="Belum ada catatan kejadian dalam cakupan Anda."
+        render={(id) =>
+          visible
+            .filter((i) => i.studentId === id)
+            .map((i) => (
+              <IncidentCard
+                key={i.id}
+                incident={i}
+                expanded={openId === i.id}
+                onOpen={() => open(i.id)}
+                onClose={() => setOpenId(null)}
+              />
+            ))
+        }
+      />
 
       <p className="mt-3 text-sm text-slate-500">
         Orang tua tidak melihat buku kejadian secara otomatis. Pembukaan dan
