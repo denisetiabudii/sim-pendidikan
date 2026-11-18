@@ -409,7 +409,7 @@ describe("setoran hafalan", () => {
       });
 
       login("u2");
-      expect(st().changeRtqReport("s4", 1, "approve")).toMatchObject(denied); // kepala TKQ
+      expect(st().changeRtqReport("s4", 1, "approve")).toMatchObject(denied); // PIC TKQ
       login("u5");
       expect(st().changeRtqReport("s4", 1, "approve").ok).toBe(true);
       login("u4");

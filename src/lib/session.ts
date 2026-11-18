@@ -1,18 +1,20 @@
 import { educatorUnit } from "./access";
 import type { AppData, Unit, User } from "./types";
 
-export type Entry = Unit | "wali" | "direktur";
+export type Entry = "direktur" | "TKQ:pic" | "TKQ:guru" | "RTQ:pic" | "RTQ:guru";
+
+export const entryUnit = (e: Entry): Unit | undefined =>
+  e === "direktur" ? undefined : (e.split(":")[0] as Unit);
 
 // Hanya untuk prototipe. Login sungguhan dibuat di backend.
 export const DEMO_PASSWORD = "demo";
 
-// Apakah akun ini boleh masuk lewat pintu (unit) yang dipilih.
+// Akun wali tidak punya pintu masuk (aplikasi internal dulu).
 export function eligible(data: AppData, u: User, entry: Entry): boolean {
-  if (entry === "wali") return u.role === "wali";
   if (entry === "direktur") return u.role === "direktur";
-  if (u.role === "kepala") return u.unit === entry;
-  if (u.role === "pendidik") return educatorUnit(data, u) === entry;
-  return false;
+  const [unit, kind] = entry.split(":");
+  if (kind === "pic") return u.role === "kepala" && u.unit === unit;
+  return u.role === "pendidik" && educatorUnit(data, u) === unit;
 }
 
 export function findByUsername(data: AppData, username: string): User | undefined {

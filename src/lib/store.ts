@@ -36,7 +36,7 @@ import {
   rtqKey,
   validateTahfidzRows,
 } from "./rtq";
-import { DEMO_PASSWORD, eligible, findByUsername } from "./session";
+import { DEMO_PASSWORD, eligible, entryUnit, findByUsername } from "./session";
 import type { Entry } from "./session";
 
 export interface Session {
@@ -57,7 +57,7 @@ interface State {
   data: AppData;
   currentUserId: string;
   session: Session | null;
-  signIn: (username: string, password: string, entry: Entry) => Result;
+  signIn: (username: string, password: string, entry: Entry, ) => Result;
   chooseGroups: (groupIds: string[]) => Result;
   resetGroups: () => void;
   signOut: () => void;
@@ -1253,10 +1253,7 @@ export const useStore = create<State>()(
             };
           set({
             currentUserId: u.id,
-            session: {
-              unit: entry === "TKQ" || entry === "RTQ" ? entry : undefined,
-              groupIds: [],
-            },
+            session: { unit: entryUnit(entry), groupIds: [] },
             data: {
               ...data,
               audit: audit(data, u.name, "Masuk", "Sistem", entry),

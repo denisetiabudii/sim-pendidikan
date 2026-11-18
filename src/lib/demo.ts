@@ -211,7 +211,7 @@ export function demoData(today: string): AppData {
     {
       id: "a3",
       at: now,
-      actor: "Kepala TKQ",
+      actor: "PIC TKQ",
       action: "Rapor Dipublikasikan",
       object: "Naira",
       detail: "v1",

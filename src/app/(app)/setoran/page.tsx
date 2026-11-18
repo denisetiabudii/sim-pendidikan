@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useStore } from "@/lib/store";
 import { useToday } from "@/lib/useToday";
-import { canSeeStudent, myGroupIds, myStudentIds } from "@/lib/access";
+import { myGroupIds, myStudentIds } from "@/lib/access";
 import { RECITATION_KINDS, RECITATION_QUALITIES } from "@/lib/constants";
 import { juzText, totalMemorized } from "@/lib/hafalan";
 import {
@@ -18,6 +18,8 @@ import {
 import type { JuzPart } from "@/lib/quran";
 import type { RecitationKind, RecitationQuality } from "@/lib/types";
 import { useUser } from "@/lib/useUser";
+import StudentGroups from "@/components/StudentGroups";
+import type { GroupEntry } from "@/components/StudentGroups";
 
 const fmt = (d: string) =>
   new Date(`${d}T00:00:00`).toLocaleDateString("id-ID", {
@@ -61,9 +63,17 @@ export default function Setoran() {
   const cur = options.find((o) => o.no === surahNo) ?? options[0];
   const matched = manual ? matchSurah(manualName) : 0;
 
-  const list = data.recitations
-    .filter((r) => canSeeStudent(data, user, r.studentId))
-    .slice(0, 30);
+  const entries: GroupEntry[] = rtqStudents.map((s) => {
+    const mine = data.recitations.filter((r) => r.studentId === s.id);
+    return {
+      id: s.id,
+      name: s.name,
+      sub: data.groups[s.groupId].name,
+      total: mine.length,
+      flag: 0,
+      latest: mine.reduce((a, r) => (r.createdAt > a ? r.createdAt : a), ""),
+    };
+  });
 
   function save() {
     if (!studentId || !date) return;
@@ -313,35 +323,32 @@ export default function Setoran() {
         </p>
       </section>
 
-      <section className="rounded border bg-white p-3">
-        <h2 className="mb-2 font-semibold">Catatan terbaru</h2>
-        {list.length === 0 && (
-          <p className="text-sm text-slate-500">Belum ada setoran tercatat.</p>
-        )}
-        <ul className="space-y-1 text-sm">
-          {list.map((r) => (
-            <li
-              key={r.id}
-              className="border-t pt-1 first:border-t-0 first:pt-0"
-            >
-              <span className="text-slate-500">{fmt(r.date)}</span> ·{" "}
-              <b>{data.students[r.studentId].name}</b> · {r.kind}:{" "}
-              <bdi lang="ar" dir="rtl">
-                {surahLabel(r.surahNo, r.surah)}
-              </bdi>{" "}
-              {r.from}–{r.to}
-              {r.surahNo === 0 && (
-                <span className="ml-1 rounded border px-1 text-xs">manual</span>
-              )}{" "}
-              ·{" "}
-              <span
-                className={r.quality === "Perlu diulang" ? "text-red-700" : ""}
-              >
-                {r.quality}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <section className="rounded border bg-white p-3">
+        <h2 className="mb-2 font-semibold">Catatan per santri</h2>
+        <StudentGroups
+          entries={entries}
+          flagLabel=""
+          empty="Belum ada setoran tercatat."
+          render={(id) => (
+            <>
+              <p className="text-sm text-slate-600">
+                Dihafal {totalMemorized(data.recitations, id)} ayat. {juzText(data.recitations, id)}.
+              </p>
+              <ul className="max-h-80 space-y-1 overflow-y-auto text-sm">
+                {data.recitations
+                  .filter((r) => r.studentId === id)
+                  .map((r) => (
+                    <li key={r.id} className="border-t pt-1 first:border-t-0 first:pt-0">
+                      <span className="text-slate-500">{fmt(r.date)}</span> · {r.kind}:{" "}
+                      <bdi lang="ar" dir="rtl">{surahLabel(r.surahNo, r.surah)}</bdi> {r.from}–{r.to}
+                      {r.surahNo === 0 && <span className="ml-1 rounded border px-1 text-xs">manual</span>} ·{" "}
+                      <span className={r.quality === "Perlu diulang" ? "text-red-700" : ""}>{r.quality}</span>
+                    </li>
+                  ))}
+              </ul>
+            </>
+          )}
+        />
       </section>
     </div>
   );

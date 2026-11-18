@@ -3,10 +3,10 @@ import type { AppData } from "./types";
 export const seed = (): AppData => ({
   users: {
     u1: { id: "u1", username: "direktur", name: "Direktur Amal Pendidikan", role: "direktur" },
-    u2: { id: "u2", username: "kepala.tkq", name: "Kepala TKQ", role: "kepala", unit: "TKQ" },
+    u2: { id: "u2", username: "pic.tkq", name: "PIC TKQ", role: "kepala", unit: "TKQ" },
     u3: { id: "u3", username: "aisyah", name: "Ustadzah Aisyah (guru TKQ)", role: "pendidik", groupIds: ["TKA"] },
     u4: { id: "u4", username: "hamzah", name: "Ustadz Hamzah (murabbi RTQ)", role: "pendidik", groupIds: ["H1"] },
-    u5: { id: "u5", username: "kepala.rtq", name: "Kepala RTQ", role: "kepala", unit: "RTQ" },
+    u5: { id: "u5", username: "pic.rtq", name: "PIC RTQ", role: "kepala", unit: "RTQ" },
     u6: { id: "u6", username: "budi", name: "Bapak Budi (wali)", role: "wali", childIds: ["s1", "s4"] },
   },
   groups: {
