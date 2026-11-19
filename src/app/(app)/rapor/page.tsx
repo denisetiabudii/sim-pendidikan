@@ -7,6 +7,7 @@ import { finalScore, predicate } from "@/lib/grades";
 import { getReport, STATUS_LABEL } from "@/lib/reports";
 import { juzText, totalMemorized } from "@/lib/hafalan";
 import { useUser } from "@/lib/useUser";
+import { StatusBadge } from "@/components/ReportStatus";
 
 export default function Rapor() {
   const { data, changeReport } = useStore();
@@ -73,9 +74,7 @@ export default function Rapor() {
                       </span>
                     </td>
                     <td className="p-2">
-                      <span className="rounded-full border px-2 py-0.5 text-xs">
-                        {STATUS_LABEL[rep.status]} v{rep.version}
-                      </span>
+                      <StatusBadge status={rep.status} version={rep.version} />
                     </td>
                     <td className="space-x-1 p-2">
                       {user.role === "pendidik" && rep.status === "draft" && (

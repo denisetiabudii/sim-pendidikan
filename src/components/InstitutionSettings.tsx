@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useStore } from "@/lib/store";
 import { useStoreHydrated } from "@/lib/useStoreHydrated";
 import type { Academic, Institution } from "@/lib/types";
+import { notify } from "@/lib/toast";
 
 async function fileToLogo(file: File): Promise<string> {
   if (!/^image\/(png|jpeg|webp)$/.test(file.type)) throw new Error("Gunakan gambar PNG, JPG, atau WebP");
@@ -69,7 +70,7 @@ export default function InstitutionSettings() {
                 const r = saveInstitution({ logoDataUrl: await fileToLogo(file) });
                 setMsg(r.ok ? "Logo tersimpan." : r.error);
               } catch (err) {
-                setMsg(err instanceof Error ? err.message : "Gagal membaca gambar");
+                notify("error", err instanceof Error ? err.message : "Gagal membaca gambar");
               }
             }}
           />

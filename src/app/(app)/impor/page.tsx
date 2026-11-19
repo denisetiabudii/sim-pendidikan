@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useStore } from "@/lib/store";
 import { importBatchInUse, MAX_ROWS, parseCsv, validateRows } from "@/lib/csv";
 import type { PreviewRow } from "@/lib/csv";
+import { warn } from "@/lib/toast";
 
 const SAMPLE = "nama,kelompok\nAmina,Kelas A\nYusuf,Kelas B\n";
 const fmt = (iso: string) =>
@@ -35,8 +36,8 @@ export default function Impor() {
 
   function makePreview() {
     const raw = parseCsv(text);
-    if (raw.length === 0) return setMsg("Isi data terlebih dahulu.");
-    if (raw.length > MAX_ROWS + 1) return setMsg(`Maksimal ${MAX_ROWS} baris per impor.`);
+    if (raw.length === 0) return warn("Isi data terlebih dahulu.");
+    if (raw.length > MAX_ROWS + 1) return warn(`Maksimal ${MAX_ROWS} baris per impor.`);
     setMsg("");
     setPreview(validateRows(data, user, raw));
   }

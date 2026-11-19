@@ -38,6 +38,7 @@ import {
 } from "./rtq";
 import { DEMO_PASSWORD, eligible, entryUnit, findByUsername } from "./session";
 import type { Entry } from "./session";
+import { withFeedback } from "./feedback";
 
 export interface Session {
   unit?: Unit;
@@ -57,7 +58,7 @@ interface State {
   data: AppData;
   currentUserId: string;
   session: Session | null;
-  signIn: (username: string, password: string, entry: Entry, ) => Result;
+  signIn: (username: string, password: string, entry: Entry) => Result;
   chooseGroups: (groupIds: string[]) => Result;
   resetGroups: () => void;
   signOut: () => void;
@@ -169,7 +170,7 @@ export const useStore = create<State>()(
         ...data.audit,
       ];
 
-      return {
+      const base: State = {
         data: seed(),
         currentUserId: "u3",
         session: null,
@@ -1285,6 +1286,7 @@ export const useStore = create<State>()(
         signOut: () => set({ session: null }),
         reset: () => set({ data: seed(), currentUserId: "u3", session: null }),
       };
+      return withFeedback(base);
     },
     { name: "simp-next-v10", skipHydration: true },
   ),

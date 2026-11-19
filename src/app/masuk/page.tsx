@@ -6,6 +6,7 @@ import { useStore } from "@/lib/store";
 import { useStoreHydrated } from "@/lib/useStoreHydrated";
 import { DEMO_PASSWORD, eligible } from "@/lib/session";
 import type { Entry } from "@/lib/session";
+import Alert from "@/components/Alert";
 
 const LABEL: Record<Entry, string> = {
   direktur: "Direktur",
@@ -105,7 +106,7 @@ export default function Masuk() {
                   </p>
                 )}
               </div>
-              {err && <p className="mt-2 text-sm text-red-700">{err}</p>}
+              {err && <div className="mt-2"><Alert type="error">{err}</Alert></div>}
               <button
                 className="mt-4 w-full rounded-lg bg-blue-600 py-2.5 font-semibold text-white disabled:opacity-40"
                 disabled={selected.length === 0}
@@ -181,7 +182,7 @@ export default function Masuk() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
-                {err && <p className="text-sm text-red-700">{err}</p>}
+                {err && <Alert type="error">{err}</Alert>}
                 <button className="w-full rounded-lg bg-blue-600 py-2.5 font-semibold text-white" type="submit">
                   Masuk
                 </button>

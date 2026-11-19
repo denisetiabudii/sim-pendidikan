@@ -6,6 +6,8 @@ import type { Incident, IncidentStatus } from "@/lib/types";
 import { useUser } from "@/lib/useUser";
 import StudentGroups from "@/components/StudentGroups";
 import type { GroupEntry } from "@/components/StudentGroups";
+import DayGroups from "@/components/DayGroups";
+import { Field, FormGroup } from "@/components/FormSection";
 
 const STATUSES: IncidentStatus[] = ["Baru", "Ditindaklanjuti", "Selesai"];
 const fmt = (iso: string) =>
@@ -89,73 +91,48 @@ export default function Kejadian() {
       <h1 className="mb-3 text-xl font-bold">Buku kejadian</h1>
 
       {canCreate && (
-        <section className="mb-4 rounded border bg-white p-3">
-          <h2 className="mb-2 font-semibold">Catat kejadian</h2>
-          <div className="mb-2 flex flex-wrap gap-2">
-            <select
-              className="rounded border bg-white p-2 text-sm"
-              value={studentId ?? ""}
-              onChange={(e) => setSid(e.target.value)}
-              aria-label="Peserta"
-            >
-              {students.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-            <select
-              className="rounded border bg-white p-2 text-sm"
-              value={cat ?? ""}
-              onChange={(e) => setCategory(e.target.value)}
-              aria-label="Kategori"
-            >
-              {data.incidentCategories.map((c) => (
-                <option key={c.name} value={c.name}>
-                  {c.name} ({c.level})
-                </option>
-              ))}
-            </select>
-            <input
-              type="datetime-local"
-              className="rounded border p-2 text-sm"
-              value={when}
-              onChange={(e) => setWhen(e.target.value)}
-              aria-label="Waktu kejadian"
-            />
-            <input
-              className="rounded border p-2 text-sm"
-              placeholder="Lokasi"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-            />
-          </div>
-          <textarea
-            className="w-full rounded border p-2 text-sm"
-            rows={3}
-            maxLength={2000}
-            placeholder="Kronologi faktual: apa yang terlihat atau terdengar, tanpa label atau diagnosis"
-            value={chronology}
-            onChange={(e) => setChronology(e.target.value)}
-          />
-          <textarea
-            className="mt-2 w-full rounded border p-2 text-sm"
-            rows={2}
-            maxLength={2000}
-            placeholder="Tindakan awal"
-            value={action}
-            onChange={(e) => setAction(e.target.value)}
-          />
-          <button
-            className="mt-2 rounded bg-teal-700 px-3 py-2 text-sm text-white"
-            onClick={save}
+                <section className="card space-y-3 p-4">
+          <h2>Catat kejadian</h2>
+
+          <FormGroup step={1} title="Siapa, kapan, dan di mana">
+            <Field label="Peserta">
+              <select className="w-full" value={studentId ?? ""} onChange={(e) => setSid(e.target.value)}>
+                {students.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Waktu kejadian (kosong = sekarang)">
+              <input type="datetime-local" className="w-full" value={when} onChange={(e) => setWhen(e.target.value)} />
+            </Field>
+            <Field label="Lokasi">
+              <input className="w-full" value={location} onChange={(e) => setLocation(e.target.value)} />
+            </Field>
+          </FormGroup>
+
+          <FormGroup
+            step={2}
+            title="Apa yang terjadi"
+            hint="Tulis fakta yang terlihat atau terdengar, tanpa label atau diagnosis. Gunakan bahasa yang menjaga martabat anak."
           >
+            <Field label="Kategori" wide>
+              <select className="w-full" value={cat ?? ""} onChange={(e) => setCategory(e.target.value)}>
+                {data.incidentCategories.map((c) => (
+                  <option key={c.name} value={c.name}>{c.name} ({c.level})</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Kronologi" wide>
+              <textarea className="w-full" rows={3} maxLength={2000} value={chronology} onChange={(e) => setChronology(e.target.value)} />
+            </Field>
+            <Field label="Tindakan awal" wide>
+              <textarea className="w-full" rows={2} maxLength={2000} value={action} onChange={(e) => setAction(e.target.value)} />
+            </Field>
+          </FormGroup>
+
+          <button className="rounded-lg bg-accent px-4 py-2 text-sm text-white" onClick={save}>
             Simpan catatan
           </button>
-          <p className="mt-1 text-xs text-slate-500">
-            Kosongkan waktu untuk memakai waktu sekarang. Gunakan bahasa yang
-            menjaga martabat anak.
-          </p>
         </section>
       )}
 
@@ -170,10 +147,11 @@ export default function Kejadian() {
         entries={entries}
         flagLabel="baru"
         empty="Belum ada catatan kejadian dalam cakupan Anda."
-        render={(id) =>
-          visible
-            .filter((i) => i.studentId === id)
-            .map((i) => (
+                render={(id) => (
+          <DayGroups
+            items={visible.filter((i) => i.studentId === id)}
+            getIso={(i) => i.occurredAt}
+            render={(i) => (
               <IncidentCard
                 key={i.id}
                 incident={i}
@@ -181,8 +159,9 @@ export default function Kejadian() {
                 onOpen={() => open(i.id)}
                 onClose={() => setOpenId(null)}
               />
-            ))
-        }
+            )}
+          />
+        )}
       />
 
       <p className="mt-3 text-sm text-slate-500">

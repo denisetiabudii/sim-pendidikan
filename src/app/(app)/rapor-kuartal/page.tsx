@@ -2,36 +2,19 @@
 import { Fragment, useState } from "react";
 import { useStore } from "@/lib/store";
 import type { ReportAction } from "@/lib/store";
+import { useUser } from "@/lib/useUser";
 import { useToday } from "@/lib/useToday";
 import { canEditGroup, myStudentIds } from "@/lib/access";
-import { STATUS_LABEL } from "@/lib/reports";
+import { reportTasks } from "@/lib/dashboard";
 import { SURAHS, surahOption } from "@/lib/quran";
 import {
-  AKHLAK_LEGEND,
-  BANDS,
-  DEFAULT_TEXT,
-  MAX_ROWS,
-  PREDIKAT,
-  absenceCounts,
-  currentQuarter,
-  fmtNum,
-  newRtqReport,
-  rowName,
-  rowsFromRecitations,
-  rtqKey,
-  tahfidzAverage,
-  tahfidzPredikat,
-  ziyadah,
+  AKHLAK_LEGEND, BANDS, DEFAULT_TEXT, MAX_ROWS, PREDIKAT, absenceCounts, currentQuarter, fmtNum,
+  newRtqReport, reportProblems, rowName, rowsFromRecitations, rtqKey, tahfidzAverage, tahfidzPredikat, ziyadah,
 } from "@/lib/rtq";
-import type {
-  Institution,
-  Predikat,
-  Quarter,
-  RtqAspect,
-  RtqSurahRow,
-} from "@/lib/types";
-import { useUser } from "@/lib/useUser";
-import { reportTasks } from "@/lib/dashboard";
+import type { Institution, Predikat, Quarter, RtqAspect, RtqReport, RtqSurahRow } from "@/lib/types";
+import { StatusBadge, StatusSteps } from "@/components/ReportStatus";
+import { Field } from "@/components/FormSection";
+import { notify } from "@/lib/toast";
 
 const ASPECTS = [
   ["akhlak", "tuturKata", "Tutur Kata"],
@@ -41,17 +24,26 @@ const ASPECTS = [
   ["tahsin", "tajwid", "Hukum Tajwid"],
 ] as const;
 
+type Filter = "all" | "belum" | "draft" | "submitted" | "approved" | "published";
+const FILTERS: [Filter, string][] = [
+  ["all", "Semua"],
+  ["belum", "Belum diisi"],
+  ["draft", "Draft"],
+  ["submitted", "Menunggu persetujuan"],
+  ["approved", "Disetujui"],
+  ["published", "Terbit"],
+];
+
 export default function RaporKuartal() {
   const { data, changeRtqReport } = useStore();
   const user = useUser();
   const today = useToday();
   const [picked, setPicked] = useState<0 | Quarter>(0);
-  const firstRtqTask = reportTasks(data, user, myStudentIds(data, user)).find((t) => t.unit === "RTQ")?.quarter;
-  const quarter = (picked || firstRtqTask || (today ? currentQuarter(data.academic, today) : 1)) as Quarter;
-  const [open, setOpen] = useState<{
-    id: string;
-    mode: "edit" | "view";
-  } | null>(null);
+  const firstTask = reportTasks(data, user, myStudentIds(data, user)).find((t) => t.unit === "RTQ")?.quarter;
+  const quarter = (picked || firstTask || (today ? currentQuarter(data.academic, today) : 1)) as Quarter;
+  const [open, setOpen] = useState<{ id: string; mode: "edit" | "view" } | null>(null);
+  const [filter, setFilter] = useState<Filter>("all");
+  const [q, setQ] = useState("");
   const [msg, setMsg] = useState("");
   const year = data.academic.year;
 
@@ -59,441 +51,354 @@ export default function RaporKuartal() {
   const ids = myStudentIds(data, user).filter(
     (id) =>
       data.groups[data.students[id].groupId].unit === "RTQ" &&
-      (user.role !== "wali" || rep(id)?.status === "published"),
+      (user.role !== "wali" || rep(id)?.status === "published")
   );
+  const statusOf = (id: string): Filter => rep(id)?.status ?? "belum";
+  const count = (f: Filter) => (f === "all" ? ids.length : ids.filter((id) => statusOf(id) === f).length);
+
+  const needle = q.trim().toLowerCase();
+  const shown = ids.filter(
+    (id) =>
+      (filter === "all" || statusOf(id) === filter) &&
+      (!needle || data.students[id].name.toLowerCase().includes(needle))
+  );
+  const byGroup = new Map<string, string[]>();
+  for (const id of shown) {
+    const g = data.students[id].groupId;
+    byGroup.set(g, [...(byGroup.get(g) ?? []), id]);
+  }
+  const groups = [...byGroup.entries()].sort((a, b) => data.groups[a[0]].name.localeCompare(data.groups[b[0]].name));
+  const head = user.role === "kepala" && user.unit === "RTQ";
 
   function act(id: string, action: ReportAction) {
-        setPicked(quarter);
+    setPicked(quarter);
     let reason: string | undefined;
-    if (
-      action === "publish" &&
-      !confirm("Publikasikan rapor ke orang tua? Rapor akan terkunci.")
-    )
-      return;
+    if (action === "publish" && !confirm("Publikasikan rapor ke orang tua? Rapor akan terkunci.")) return;
     if (action === "revise") reason = prompt("Alasan revisi rapor:") ?? "";
     const r = changeRtqReport(id, quarter, action, reason);
     setMsg(r.ok ? "" : r.error);
   }
 
-  const openId = open && ids.includes(open.id) ? open : null;
+  const openItem = open && ids.includes(open.id) ? open : null;
 
   return (
-    <div>
-      <div className="print:hidden">
-        <h1 className="mb-3 text-xl font-bold">Rapor kuartal RTQ</h1>
-        <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
-          <span className="text-slate-600">Tahun ajaran {year}</span>
+    <div className="space-y-4">
+      <div className="space-y-4 print:hidden">
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="flex-1">Rapor kuartal RTQ</h1>
+          <span className="text-sm text-slate-600">Tahun ajaran {year}</span>
           <select
-            className="rounded border bg-white p-2"
+            className="text-sm"
             value={quarter}
+            aria-label="Kuartal"
             onChange={(e) => {
               setPicked(Number(e.target.value) as Quarter);
               setOpen(null);
             }}
-            aria-label="Kuartal"
           >
-            {[1, 2, 3].map((q) => (
-              <option key={q} value={q}>
-                Kuartal {q}
-              </option>
+            {[1, 2, 3].map((k) => (
+              <option key={k} value={k}>Kuartal {k}</option>
             ))}
           </select>
         </div>
 
-        <div className="overflow-x-auto rounded border bg-white">
-          <table className="w-full text-left text-sm">
-            <thead className="text-slate-500">
-              <tr>
-                <th className="p-2">Santri</th>
-                <th className="p-2">Rata-rata tahfidz</th>
-                <th className="p-2">Status</th>
-                <th className="p-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {ids.map((id) => {
+        <div className="card space-y-3 p-3">
+          <input
+            className="w-full"
+            placeholder="Cari nama santri…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            aria-label="Cari nama santri"
+          />
+          <div className="flex flex-wrap gap-2">
+            {FILTERS.map(([f, label]) => (
+              <button
+                key={f}
+                aria-pressed={filter === f}
+                onClick={() => setFilter(f)}
+                className={`rounded-full border px-3 py-1 text-sm ${filter === f ? "border-transparent bg-accent text-white" : "bg-white"}`}
+              >
+                {label} <span className="opacity-70">{count(f)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {msg && <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800" role="alert">{msg}</p>}
+
+        {groups.map(([gid, list]) => (
+          <section key={gid} className="card overflow-hidden">
+            <h2 className="flex items-center gap-2 border-b bg-slate-50 px-4 py-2.5 text-sm">
+              {data.groups[gid].name}
+              <span className="badge">{list.length} santri</span>
+            </h2>
+            <ul className="divide-y">
+              {list.map((id) => {
                 const s = data.students[id];
                 const r = rep(id);
                 const avg = r ? tahfidzAverage(r.tahfidz) : null;
-                const canTeach =
-                  user.role === "pendidik" &&
-                  canEditGroup(data, user, s.groupId) &&
-                  (!r || r.status === "draft");
-                const head = user.role === "kepala" && user.unit === "RTQ";
+                const canTeach = user.role === "pendidik" && canEditGroup(data, user, s.groupId) && (!r || r.status === "draft");
                 return (
-                  <tr key={id} className="border-t">
-                    <td className="p-2">
-                      {s.name}{" "}
-                      <span className="text-xs text-slate-500">
-                        {data.groups[s.groupId].name}
-                      </span>
-                    </td>
-                    <td className="p-2">{fmtNum(avg)}</td>
-                    <td className="p-2">
-                      <span className="rounded-full border px-2 py-0.5 text-xs">
-                        {r
-                          ? `${STATUS_LABEL[r.status]} v${r.version}`
-                          : "Belum diisi"}
-                      </span>
-                    </td>
-                    <td className="space-x-1 p-2">
+                  <li key={id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+                    <div className="min-w-40 flex-1">
+                      <div className="font-medium">{s.name}</div>
+                      {r ? <StatusSteps status={r.status} /> : <span className="badge badge-warn mt-1">Belum diisi</span>}
+                    </div>
+                    <div className="text-sm text-slate-600">
+                      Rata-rata tahfidz <b className="text-slate-900">{fmtNum(avg)}</b>
+                      {r && <StatusBadge status={r.status} version={r.version} />}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
                       {canTeach && (
-                        <button
-                          className="rounded border px-2.5 py-1"
-                          onClick={() => setOpen({ id, mode: "edit" })}
-                        >
+                        <button className="rounded-lg border px-3 py-1.5 text-sm" onClick={() => setOpen({ id, mode: "edit" })}>
                           Isi rapor
                         </button>
                       )}
                       {canTeach && r && (
-                        <button
-                          className="rounded bg-teal-700 px-2.5 py-1 text-white"
-                          onClick={() => act(id, "submit")}
-                        >
+                        <button className="rounded-lg bg-accent px-3 py-1.5 text-sm text-white" onClick={() => act(id, "submit")}>
                           Ajukan
                         </button>
                       )}
                       {head && r?.status === "submitted" && (
                         <>
-                          <button
-                            className="rounded bg-teal-700 px-2.5 py-1 text-white"
-                            onClick={() => act(id, "approve")}
-                          >
-                            Setujui
-                          </button>
-                          <button
-                            className="rounded border px-2.5 py-1"
-                            onClick={() => act(id, "return")}
-                          >
-                            Kembalikan
-                          </button>
+                          <button className="rounded-lg bg-accent px-3 py-1.5 text-sm text-white" onClick={() => act(id, "approve")}>Setujui</button>
+                          <button className="rounded-lg border px-3 py-1.5 text-sm" onClick={() => act(id, "return")}>Kembalikan</button>
                         </>
                       )}
                       {head && r?.status === "approved" && (
-                        <button
-                          className="rounded bg-teal-700 px-2.5 py-1 text-white"
-                          onClick={() => act(id, "publish")}
-                        >
-                          Publikasikan
-                        </button>
+                        <button className="rounded-lg bg-accent px-3 py-1.5 text-sm text-white" onClick={() => act(id, "publish")}>Publikasikan</button>
                       )}
                       {head && r?.status === "published" && (
-                        <button
-                          className="rounded border px-2.5 py-1"
-                          onClick={() => act(id, "revise")}
-                        >
-                          Buat revisi
-                        </button>
+                        <button className="rounded-lg border px-3 py-1.5 text-sm" onClick={() => act(id, "revise")}>Buat revisi</button>
                       )}
                       {r && (
-                        <button
-                          className="rounded border px-2.5 py-1"
-                          onClick={() => setOpen({ id, mode: "view" })}
-                        >
-                          Lihat
-                        </button>
+                        <button className="rounded-lg border px-3 py-1.5 text-sm" onClick={() => setOpen({ id, mode: "view" })}>Lihat</button>
                       )}
-                    </td>
-                  </tr>
+                    </div>
+                  </li>
                 );
               })}
-              {ids.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="p-3 text-slate-500">
-                    {user.role === "wali"
-                      ? "Belum ada rapor yang dipublikasikan."
-                      : "Tidak ada santri RTQ dalam cakupan Anda."}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-        {msg && <p className="mt-3 text-sm text-red-700">{msg}</p>}
-        <p className="mt-2 text-sm text-slate-500">
-          Alur: draft → diajukan → disetujui kepala unit → dipublikasikan
-          (terkunci). Revisi membuat versi baru.
+            </ul>
+          </section>
+        ))}
+
+        {groups.length === 0 && (
+          <p className="card p-4 text-sm text-slate-500">
+            {ids.length === 0
+              ? user.role === "wali" ? "Belum ada rapor yang dipublikasikan." : "Tidak ada santri RTQ dalam cakupan Anda."
+              : "Tidak ada santri yang cocok dengan filter."}
+          </p>
+        )}
+        <p className="text-xs text-slate-500">
+          Alur: draft → diajukan → disetujui PIC unit → dipublikasikan (terkunci). Revisi membuat versi baru dengan alasan.
         </p>
       </div>
 
-      {openId?.mode === "edit" && (
-        <Editor
-          key={`${openId.id}-${quarter}`}
-          studentId={openId.id}
-          quarter={quarter}
-        />
-      )}
-      {openId?.mode === "view" && (
-        <Letter studentId={openId.id} quarter={quarter} />
-      )}
+      {openItem?.mode === "edit" && <Editor key={`${openItem.id}-${quarter}`} studentId={openItem.id} quarter={quarter} />}
+      {openItem?.mode === "view" && <Letter studentId={openItem.id} quarter={quarter} />}
     </div>
   );
 }
 
-function Editor({
-  studentId,
-  quarter,
-}: {
-  studentId: string;
-  quarter: Quarter;
-}) {
+function Section({
+  title, done, total, optional, children,
+}: { title: string; done?: number; total?: number; optional?: boolean; children: React.ReactNode }) {
+  const complete = total !== undefined && done === total;
+  return (
+    <details open className="card">
+      <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 font-semibold">
+        <span className="flex-1">{title}</span>
+        {optional ? (
+          <span className="badge">Opsional</span>
+        ) : (
+          <span className={`badge ${complete ? "badge-ok" : "badge-warn"}`}>{complete ? "Lengkap" : `${done} dari ${total}`}</span>
+        )}
+      </summary>
+      <div className="space-y-3 border-t p-4">{children}</div>
+    </details>
+  );
+}
+
+function Editor({ studentId, quarter }: { studentId: string; quarter: Quarter }) {
   const { data, saveRtqDraft } = useStore();
   const year = data.academic.year;
   const s = data.students[studentId];
-  const existing =
-    data.rtqReports[rtqKey(studentId, year, quarter)] ??
-    newRtqReport(studentId, year, quarter);
+  const existing = data.rtqReports[rtqKey(studentId, year, quarter)] ?? newRtqReport(studentId, year, quarter);
   const [f, setF] = useState({
-    akhlak: existing.akhlak,
-    tahsin: existing.tahsin,
-    tahfidz: existing.tahfidz,
-    catatan: existing.catatan,
+    akhlak: existing.akhlak, tahsin: existing.tahsin, tahfidz: existing.tahfidz, catatan: existing.catatan,
   });
   const [msg, setMsg] = useState("");
 
-  const setAspect = (
-    g: "akhlak" | "tahsin",
-    k: string,
-    patch: Partial<RtqAspect>,
-  ) =>
-    setF({
-      ...f,
-      [g]: {
-        ...f[g],
-        [k]: { ...(f[g] as Record<string, RtqAspect>)[k], ...patch },
-      },
-    });
+  const setAspect = (g: "akhlak" | "tahsin", k: string, patch: Partial<RtqAspect>) =>
+    setF({ ...f, [g]: { ...f[g], [k]: { ...(f[g] as Record<string, RtqAspect>)[k], ...patch } } });
   const setRow = (i: number, patch: Partial<RtqSurahRow>) =>
-    setF({
-      ...f,
-      tahfidz: f.tahfidz.map((r, j) => (j === i ? { ...r, ...patch } : r)),
-    });
+    setF({ ...f, tahfidz: f.tahfidz.map((r, j) => (j === i ? { ...r, ...patch } : r)) });
   const num = (v: string) => (v === "" ? null : Number(v));
+  const predLabel = (g: "akhlak" | "tahsin", p: Predikat) =>
+    g === "akhlak" ? `${p} · ${AKHLAK_LEGEND[p]}` : `${p} · ${BANDS.find((b) => b.predikat === p)?.name ?? ""}`;
+  const aspectOk = (g: "akhlak" | "tahsin", k: string) => {
+    const a = (f[g] as Record<string, RtqAspect>)[k];
+    return !!a.predikat && !!a.text.trim();
+  };
 
   function fromRecitations() {
     const q = data.academic.quarters[quarter - 1];
-    const rows = rowsFromRecitations(
-      data.recitations,
-      studentId,
-      q.start,
-      q.end,
-    );
-    if (rows.length === 0)
-      return setMsg("Tidak ada setoran baru pada kuartal ini.");
-    if (
-      f.tahfidz.length > 0 &&
-      !confirm("Ganti isi tabel tahfidz dengan data setoran?")
-    )
-      return;
+    const rows = rowsFromRecitations(data.recitations, studentId, q.start, q.end);
+    if (rows.length === 0) return notify("info", "Tidak ada setoran baru pada kuartal ini.");
+    if (f.tahfidz.length > 0 && !confirm("Ganti isi tabel tahfidz dengan data setoran?")) return;
     setF({ ...f, tahfidz: rows });
     setMsg("");
   }
 
+  const akhlakDone = ASPECTS.filter(([g, k]) => g === "akhlak" && aspectOk(g, k)).length;
+  const tahsinDone = ASPECTS.filter(([g, k]) => g === "tahsin" && aspectOk(g, k)).length;
+  const tahfidzOk = f.tahfidz.length > 0 && f.tahfidz.every((r) => r.harian !== null && r.evaluasi !== null);
+  const doneAll = akhlakDone + tahsinDone + (tahfidzOk ? 1 : 0);
+  const totalAll = 6;
+  const ready = reportProblems({ ...existing, ...f } as RtqReport).length === 0;
   const avg = tahfidzAverage(f.tahfidz);
   const band = tahfidzPredikat(avg);
 
-  return (
-    <section className="mt-4 space-y-4 rounded border bg-white p-4 print:hidden">
-      <h2 className="text-lg font-bold">
-        Isi rapor: {s.name} · Kuartal {quarter}
-      </h2>
-
-      {ASPECTS.map(([g, k, label]) => {
-        const a = (f[g] as Record<string, RtqAspect>)[k];
-        return (
-          <div key={k} className="rounded border p-2">
-            <div className="mb-1 flex flex-wrap items-center gap-2 text-sm">
-              <b className="w-44">
-                {g === "akhlak" ? "Akhlak" : "Tahsin"} · {label}
-              </b>
+  const renderAspects = (g: "akhlak" | "tahsin") =>
+    ASPECTS.filter(([gg]) => gg === g).map(([, k, label]) => {
+      const a = (f[g] as Record<string, RtqAspect>)[k];
+      return (
+        <div key={k} className="rounded-lg border bg-slate-50/60 p-3">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Field label={label}>
               <select
-                className="rounded border bg-white p-1.5"
+                className="w-full"
                 value={a.predikat}
-                aria-label={`Predikat ${label}`}
                 onChange={(e) => {
                   const p = e.target.value as Predikat | "";
-                  setAspect(g, k, {
-                    predikat: p,
-                    ...(p === "A" && !a.text ? { text: DEFAULT_TEXT[k] } : {}),
-                  });
+                  setAspect(g, k, { predikat: p, ...(p === "A" && !a.text ? { text: DEFAULT_TEXT[k] } : {}) });
                 }}
               >
-                <option value="">Predikat</option>
+                <option value="">Pilih predikat</option>
                 {PREDIKAT.map((p) => (
-                  <option key={p} value={p}>
-                    {p} · {AKHLAK_LEGEND[p]}
-                  </option>
+                  <option key={p} value={p}>{predLabel(g, p)}</option>
                 ))}
               </select>
+            </Field>
+            <div className="sm:col-span-2">
+              <Field label="Keterangan singkat sesuai pengamatan selama kuartal">
+                <textarea className="w-full" rows={2} maxLength={500} value={a.text} onChange={(e) => setAspect(g, k, { text: e.target.value })} />
+              </Field>
             </div>
-            <textarea
-              className="w-full rounded border p-2 text-sm"
-              rows={2}
-              maxLength={500}
-              placeholder="Keterangan singkat sesuai pengamatan selama kuartal"
-              value={a.text}
-              onChange={(e) => setAspect(g, k, { text: e.target.value })}
-            />
           </div>
-        );
-      })}
+        </div>
+      );
+    });
 
-      <div>
-        <div className="mb-2 flex flex-wrap items-center gap-2">
-          <h3 className="font-semibold">Nilai tahfidz</h3>
+  return (
+    <section className="space-y-3 print:hidden">
+      <div className="card space-y-2 p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="flex-1">Isi rapor: {s.name} · Kuartal {quarter}</h2>
+          <span className={`badge ${ready ? "badge-ok" : "badge-warn"}`}>{ready ? "Siap diajukan" : "Belum lengkap"}</span>
+        </div>
+        <StatusSteps status={existing.status} />
+        <div>
+          <div className="mb-1 flex justify-between text-xs text-slate-600">
+            <span>Kelengkapan isian wajib</span>
+            <b>{doneAll} dari {totalAll}</b>
+          </div>
+          <div className="h-2 rounded-full bg-slate-100">
+            <div className="h-2 rounded-full bg-accent" style={{ width: `${(doneAll / totalAll) * 100}%` }} />
+          </div>
+        </div>
+      </div>
+
+      <Section title="Akhlak" done={akhlakDone} total={2}>{renderAspects("akhlak")}</Section>
+      <Section title="Tahsin" done={tahsinDone} total={3}>{renderAspects("tahsin")}</Section>
+
+      <Section title="Tahfidz" done={tahfidzOk ? 1 : 0} total={1}>
+        <div className="flex flex-wrap items-center gap-2">
+          <button className="rounded-lg border px-3 py-1.5 text-sm" onClick={fromRecitations}>Ambil dari setoran</button>
           <button
-            className="rounded border px-2.5 py-1 text-sm"
-            onClick={fromRecitations}
-          >
-            Ambil dari setoran
-          </button>
-          <button
-            className="rounded border px-2.5 py-1 text-sm disabled:opacity-40"
+            className="rounded-lg border px-3 py-1.5 text-sm"
             disabled={f.tahfidz.length >= MAX_ROWS}
             onClick={() =>
-              setF({
-                ...f,
-                tahfidz: [
-                  ...f.tahfidz,
-                  {
-                    surahNo: 0,
-                    name: "",
-                    from: 1,
-                    to: 1,
-                    harian: null,
-                    evaluasi: null,
-                  },
-                ],
-              })
+              setF({ ...f, tahfidz: [...f.tahfidz, { surahNo: 0, name: "", from: 1, to: 1, harian: null, evaluasi: null }] })
             }
           >
-            Tambah baris
+            Tambah surah
           </button>
+          <span className="text-xs text-slate-500">{f.tahfidz.length} dari {MAX_ROWS} baris</span>
         </div>
-        <div className="space-y-2">
-          {f.tahfidz.map((r, i) => (
-            <div
-              key={i}
-              className="flex flex-wrap items-center gap-2 rounded border p-2 text-sm"
-            >
-              <span className="w-5">{i + 1}</span>
-              <select
-                className="rounded border bg-white p-1.5"
-                value={r.surahNo}
-                aria-label="Surah"
-                onChange={(e) => {
-                  const no = Number(e.target.value);
-                  setRow(i, { surahNo: no, name: no ? SURAHS[no - 1][0] : "" });
-                }}
-              >
-                <option value={0}>Tulis manual</option>
-                {SURAHS.map(([name], j) => (
-                  <option key={name} value={j + 1}>
-                    {surahOption(j + 1)}
-                  </option>
-                ))}
-              </select>
-              {r.surahNo === 0 && (
-                <input
-                  className="w-32 rounded border p-1.5"
-                  dir="rtl"
-                  placeholder="Nama surah"
-                  value={r.name}
-                  onChange={(e) => setRow(i, { name: e.target.value })}
-                />
-              )}
-              <input
-                type="number"
-                min={1}
-                className="w-20 rounded border p-1.5"
-                aria-label="Ayat awal"
-                value={r.from || ""}
-                onChange={(e) => setRow(i, { from: Number(e.target.value) })}
-              />
-              <span>–</span>
-              <input
-                type="number"
-                min={1}
-                className="w-20 rounded border p-1.5"
-                aria-label="Ayat akhir"
-                value={r.to || ""}
-                onChange={(e) => setRow(i, { to: Number(e.target.value) })}
-              />
-              <input
-                type="number"
-                min={0}
-                max={100}
-                className="w-24 rounded border p-1.5"
-                placeholder="Harian"
-                aria-label="Nilai harian"
-                value={r.harian ?? ""}
-                onChange={(e) => setRow(i, { harian: num(e.target.value) })}
-              />
-              <input
-                type="number"
-                min={0}
-                max={100}
-                className="w-24 rounded border p-1.5"
-                placeholder="Evaluasi"
-                aria-label="Nilai evaluasi"
-                value={r.evaluasi ?? ""}
-                onChange={(e) => setRow(i, { evaluasi: num(e.target.value) })}
-              />
-              <button
-                className="text-red-700"
-                aria-label="Hapus baris"
-                onClick={() =>
-                  setF({ ...f, tahfidz: f.tahfidz.filter((_, j) => j !== i) })
-                }
-              >
-                ✕
-              </button>
+
+        {f.tahfidz.map((r, i) => (
+          <div key={i} className="rounded-lg border bg-slate-50/60 p-3">
+            <div className="mb-2 flex items-center justify-between text-sm font-medium">
+              <span>Surah ke-{i + 1}</span>
+              <button className="rounded px-2 text-red-700 hover:bg-red-50" aria-label={`Hapus surah ke-${i + 1}`}
+                onClick={() => setF({ ...f, tahfidz: f.tahfidz.filter((_, j) => j !== i) })}>Hapus</button>
             </div>
-          ))}
-          {f.tahfidz.length === 0 && (
-            <p className="text-sm text-slate-500">
-              Belum ada baris. Tambahkan atau ambil dari setoran.
-            </p>
-          )}
-        </div>
-        <p className="mt-2 text-sm">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+              <div className="sm:col-span-2">
+                <Field label="Surah">
+                  <select
+                    dir="ltr"
+                    className="w-full"
+                    value={r.surahNo}
+                    onChange={(e) => {
+                      const no = Number(e.target.value);
+                      setRow(i, { surahNo: no, name: no ? SURAHS[no - 1][0] : "" });
+                    }}
+                  >
+                    <option value={0}>Tulis manual…</option>
+                    {SURAHS.map(([name], j) => (
+                      <option key={name} value={j + 1}>{surahOption(j + 1)}</option>
+                    ))}
+                  </select>
+                </Field>
+                {r.surahNo === 0 && (
+                  <input className="mt-2 w-full" dir="auto" placeholder="Nama surah (manual)" aria-label="Nama surah manual"
+                    value={r.name} onChange={(e) => setRow(i, { name: e.target.value })} />
+                )}
+              </div>
+              <Field label="Ayat awal">
+                <input type="number" min={1} className="w-full" value={r.from || ""} onChange={(e) => setRow(i, { from: Number(e.target.value) })} />
+              </Field>
+              <Field label="Ayat akhir">
+                <input type="number" min={1} className="w-full" value={r.to || ""} onChange={(e) => setRow(i, { to: Number(e.target.value) })} />
+              </Field>
+              <Field label="Nilai harian">
+                <input type="number" min={0} max={100} className="w-full" value={r.harian ?? ""} onChange={(e) => setRow(i, { harian: num(e.target.value) })} />
+              </Field>
+              <Field label="Nilai evaluasi">
+                <input type="number" min={0} max={100} className="w-full" value={r.evaluasi ?? ""} onChange={(e) => setRow(i, { evaluasi: num(e.target.value) })} />
+              </Field>
+            </div>
+          </div>
+        ))}
+        {f.tahfidz.length === 0 && <p className="text-sm text-slate-500">Belum ada surah. Ambil dari setoran atau tambahkan manual.</p>}
+
+        <p className="rounded-lg bg-accent-soft p-3 text-sm text-accent-ink">
           Rata-rata: <b>{fmtNum(avg)}</b>{" "}
-          {band
-            ? `(${band.predikat} · ${band.name})`
-            : avg !== null
-              ? "(di bawah rentang predikat)"
-              : ""}{" "}
-          · Jumlah ziyadah: <b>{ziyadah(f.tahfidz)} ayat</b>
+          {band ? `(${band.predikat} · ${band.name})` : avg !== null ? "(di bawah rentang predikat)" : ""} · Jumlah ziyadah:{" "}
+          <b>{ziyadah(f.tahfidz)} ayat</b>
         </p>
-      </div>
+      </Section>
 
-      <div>
-        <label className="mb-1 block text-sm font-semibold">
-          Catatan pembimbing
-        </label>
-        <textarea
-          className="w-full rounded border p-2 text-sm"
-          rows={2}
-          maxLength={1000}
-          value={f.catatan}
-          onChange={(e) => setF({ ...f, catatan: e.target.value })}
-        />
-      </div>
+      <Section title="Catatan pembimbing" optional>
+        <Field label="Pesan, motivasi, atau saran singkat">
+          <textarea className="w-full" rows={3} maxLength={1000} value={f.catatan} onChange={(e) => setF({ ...f, catatan: e.target.value })} />
+        </Field>
+      </Section>
 
-      <button
-        className="rounded bg-teal-700 px-4 py-2 text-sm text-white"
-        onClick={() => {
-          const r = saveRtqDraft(studentId, quarter, f);
-          setMsg(
-            r.ok
-              ? "Draft tersimpan. Klik Ajukan di daftar bila sudah lengkap."
-              : r.error,
-          );
-        }}
-      >
-        Simpan draft
-      </button>
-      {msg && <p className="text-sm">{msg}</p>}
+      <div className="sticky bottom-0 z-10 flex flex-wrap items-center gap-3 rounded-lg border bg-white/95 p-3 shadow-lg backdrop-blur">
+        <button
+          className="rounded-lg bg-accent px-4 py-2 text-sm text-white"
+          onClick={() => {
+            const r = saveRtqDraft(studentId, quarter, f);
+            setMsg(r.ok ? "Draft tersimpan. Klik Ajukan di daftar bila sudah lengkap." : r.error);
+          }}
+        >
+          Simpan draft
+        </button>
+        <p className="flex-1 text-sm" role="status">{msg || (ready ? "Semua isian wajib lengkap." : "Lengkapi bagian bertanda kuning.")}</p>
+      </div>
     </section>
   );
 }

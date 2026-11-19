@@ -6,6 +6,8 @@ import type { Note } from "@/lib/types";
 import { useUser } from "@/lib/useUser";
 import StudentGroups from "@/components/StudentGroups";
 import type { GroupEntry } from "@/components/StudentGroups";
+import DayGroups from "@/components/DayGroups";
+import { Field, FormGroup } from "@/components/FormSection";
 
 const fmt = (iso: string) =>
   new Date(iso).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" });
@@ -46,34 +48,28 @@ export default function BukuPenghubung() {
       <h1 className="mb-3 text-xl font-bold">Buku penghubung</h1>
 
       {user.role === "pendidik" && (
-        <section className="mb-4 rounded border bg-white p-3">
-          <h2 className="mb-2 font-semibold">Catatan baru</h2>
-          <select
-            className="mb-2 rounded border bg-white p-2 text-sm"
-            value={studentId ?? ""}
-            onChange={(e) => setSid(e.target.value)}
-          >
-            {students.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-          <textarea
-            className="w-full rounded border p-2 text-sm"
-            rows={3}
-            maxLength={1000}
-            placeholder="Kegiatan, kebiasaan, perkembangan, atau pesan untuk orang tua"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-          />
-          <button
-            className="mt-2 rounded bg-teal-700 px-3 py-2 text-sm text-white"
-            onClick={send}
-          >
-            Kirim catatan
-          </button>
-          {msg && <p className="mt-2 text-sm text-red-700">{msg}</p>}
+                <section className="card space-y-3 p-4">
+          <h2>Catatan baru</h2>
+          <FormGroup step={1} title="Untuk siapa">
+            <Field label="Peserta">
+              <select className="w-full" value={studentId ?? ""} onChange={(e) => setSid(e.target.value)}>
+                {students.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </Field>
+          </FormGroup>
+          <FormGroup step={2} title="Isi catatan" hint="Kegiatan, kebiasaan, perkembangan, atau pesan untuk orang tua.">
+            <Field label="Catatan" wide>
+              <textarea className="w-full" rows={3} maxLength={1000} value={text} onChange={(e) => setText(e.target.value)} />
+            </Field>
+          </FormGroup>
+          <div className="flex flex-wrap items-center gap-3">
+            <button className="rounded-lg bg-accent px-4 py-2 text-sm text-white" onClick={send}>
+              Kirim catatan
+            </button>
+            {msg && <p className="text-sm text-red-700">{msg}</p>}
+          </div>
         </section>
       )}
 
@@ -85,11 +81,13 @@ export default function BukuPenghubung() {
             ? "Belum ada catatan. Kirim catatan pertama dari formulir di atas."
             : "Belum ada catatan dalam cakupan Anda."
         }
-        render={(id) =>
-          notes
-            .filter((n) => n.studentId === id)
-            .map((n) => <NoteCard key={n.id} note={n} />)
-        }
+        render={(id) => (
+          <DayGroups
+            items={notes.filter((n) => n.studentId === id)}
+            getIso={(n) => n.at}
+            render={(n) => <NoteCard key={n.id} note={n} />}
+          />
+        )}
       />
     </div>
   );

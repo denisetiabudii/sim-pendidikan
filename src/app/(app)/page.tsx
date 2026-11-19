@@ -18,10 +18,10 @@ const fmtDay = (iso: string) =>
   new Date(`${iso}T00:00:00`).toLocaleDateString("id-ID", { weekday: "short", day: "numeric", month: "short" });
 
 const TONES = {
-  blue: "border-blue-200 bg-blue-50 text-blue-900",
-  green: "border-emerald-200 bg-emerald-50 text-emerald-900",
-  violet: "border-violet-200 bg-violet-50 text-violet-900",
-  amber: "border-amber-200 bg-amber-50 text-amber-900",
+  blue: "border-l-blue-500",
+  green: "border-l-emerald-500",
+  violet: "border-l-violet-500",
+  amber: "border-l-amber-500",
 };
 
 export default function Ringkasan() {
@@ -316,9 +316,9 @@ function Trend({ days, rates }: { days: string[]; rates: (number | null)[] }) {
 
 function Kpi({ value, label, tone }: { value: string | number; label: string; tone: keyof typeof TONES }) {
   return (
-    <div className={`rounded-xl border p-3 ${TONES[tone]}`}>
-      <div className="text-2xl font-bold">{value}</div>
-      <div className="text-sm">{label}</div>
+    <div className={`card border-l-4 p-4 ${TONES[tone]}`}>
+      <div className="text-3xl font-bold leading-none text-slate-900">{value}</div>
+      <div className="mt-1.5 text-sm text-slate-600">{label}</div>
     </div>
   );
 }

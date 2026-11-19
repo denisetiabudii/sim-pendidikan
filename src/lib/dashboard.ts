@@ -194,3 +194,32 @@ export function taskText(t: ReportTask): string {
   if (t.kind === "review") return `${what} menunggu persetujuan Anda`;
   return `${what} sudah disetujui, siap dipublikasikan`;
 }
+
+export function todayCounts(data: AppData, ids: string[], today: string) {
+  const set = new Set(ids);
+  const rec = data.attendance.filter((a) => set.has(a.studentId) && a.date === today);
+  const n = (...s: string[]) => rec.filter((a) => s.includes(a.status)).length;
+  return { hadir: n("Hadir", "Terlambat"), izinSakit: n("Izin", "Sakit"), filled: rec.length };
+}
+
+// Daftar "perlu dikerjakan". Dipakai dashboard dan lonceng di header supaya angkanya sama.
+export function buildTasks(data: AppData, user: User, ids: string[], today: string) {
+  const tasks: { href: string; text: string }[] = [];
+  if (user.role === "direktur" || user.role === "wali") return tasks;
+  for (const m of missingAttendance(data, user, today)) {
+    const g = data.groups[m.groupId];
+    tasks.push({ href: "/absensi", text: `Absensi hari ini belum diisi: ${g.unit} ${g.name} (${m.missing} dari ${m.total} peserta)` });
+  }
+  if (user.role === "pendidik") {
+    const inc = incompleteScores(data, ids.filter((id) => unitOf(data, id) === "TKQ"));
+    if (inc) tasks.push({ href: "/nilai", text: `${inc} peserta nilainya belum lengkap` });
+  }
+  for (const t of reportTasks(data, user, ids)) tasks.push({ href: t.href, text: taskText(t) });
+  if (user.role === "kepala") {
+    const n = data.incidents.filter(
+      (i) => i.status === "Baru" && ids.includes(i.studentId) && canViewIncident(data, user, i)
+    ).length;
+    if (n) tasks.push({ href: "/kejadian", text: `${n} catatan kejadian baru belum ditindaklanjuti` });
+  }
+  return tasks;
+}

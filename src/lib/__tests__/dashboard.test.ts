@@ -8,6 +8,8 @@ import {
   reportBuckets,
   reportStatusRows,
   reportTasks,
+  buildTasks, 
+  todayCounts
 } from "../dashboard";
 import { myStudentIds } from "../access";
 import { demoData } from "../demo";
@@ -145,4 +147,19 @@ describe("dashboard", () => {
       });
     });
   });
+  describe("kartu dan tugas dashboard", () => {
+  const d = demoData("2026-11-15");
+  it("todayCounts menghitung hadir, izin atau sakit, dan jumlah terisi hari ini", () => {
+    expect(todayCounts(d, ["s3", "s9", "s10"], "2026-11-15")).toEqual({ hadir: 2, izinSakit: 0, filled: 3 });
+    expect(todayCounts(d, ["s4"], "2026-11-15")).toEqual({ hadir: 0, izinSakit: 0, filled: 0 });
+  });
+  it("buildTasks: PIC RTQ mendapat absensi, rapor, dan kejadian; direktur dan wali tanpa tugas", () => {
+    const ids = myStudentIds(d, d.users.u5);
+    expect(buildTasks(d, d.users.u5, ids, "2026-11-15").map((t) => t.href)).toEqual([
+      "/absensi", "/absensi", "/rapor-kuartal", "/kejadian",
+    ]);
+    expect(buildTasks(d, d.users.u1, myStudentIds(d, d.users.u1), "2026-11-15")).toEqual([]);
+    expect(buildTasks(d, d.users.u6, myStudentIds(d, d.users.u6), "2026-11-15")).toEqual([]);
+  });
+});
 });
