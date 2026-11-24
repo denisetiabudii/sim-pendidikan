@@ -48,17 +48,19 @@ describe("menu per unit", () => {
     navFor(role, unit).map((n) => labelFor(n, unit));
 
   it("TKQ dan RTQ mendapat menu yang berbeda", () => {
-    expect(labels("pendidik", "TKQ")).toEqual(["Dashboard", "Absensi Siswa", "Penilaian", "Komunikasi", "Kejadian Siswa", "Raport"]);
+    expect(labels("pendidik", "TKQ")).toEqual(["Dashboard", "Absensi Siswa", "Komunikasi", "Kejadian Siswa", "Penilaian & Raport"]);
     expect(labels("pendidik", "RTQ")).toEqual(["Dashboard", "Absensi Santri", "Tahfidz & Murojaah", "Komunikasi", "Kejadian Santri", "Raport"]);
   });
   it("halaman unit lain tidak bisa dibuka", () => {
     expect(canOpen("pendidik", "/setoran", "TKQ")).toBe(false);
-    expect(canOpen("pendidik", "/nilai", "RTQ")).toBe(false);
+    expect(canOpen("pendidik", "/rapor-tkq", "RTQ")).toBe(false);
+    expect(canOpen("pendidik", "/rapor-tkq", "TKQ")).toBe(true);
     expect(canOpen("pendidik", "/rapor-kuartal", "RTQ")).toBe(true);
+    expect(canOpen("pendidik", "/rapor", "TKQ")).toBe(false); // rapor TKQ lama dipensiunkan
     expect(canOpen("pendidik", "/audit", "TKQ")).toBe(false);
   });
   it("direktur melihat raport kedua unit", () => {
-    expect(navFor("direktur").some((n) => n.href === "/rapor")).toBe(true);
+    expect(navFor("direktur").some((n) => n.href === "/rapor-tkq")).toBe(true);
     expect(navFor("direktur").some((n) => n.href === "/rapor-kuartal")).toBe(true);
     expect(NAV.length).toBeGreaterThan(8);
   });

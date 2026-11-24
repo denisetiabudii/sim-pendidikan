@@ -158,8 +158,8 @@ function UnitCard({ unit, ids, days, today }: { unit: Unit; ids: string[]; days:
         <table className="w-full text-left text-xs">
           <thead className="text-slate-500">
             <tr>
-              <th className="p-1.5">{rtq ? "Kuartal" : ""}</th>
-              {rtq && <th className="p-1.5">Belum diisi</th>}
+              <th className="p-1.5">Kuartal</th>
+              <th className="p-1.5">Belum diisi</th>
               <th className="p-1.5">Draft</th>
               <th className="p-1.5">Menunggu persetujuan</th>
               <th className="p-1.5">Disetujui</th>
@@ -170,7 +170,7 @@ function UnitCard({ unit, ids, days, today }: { unit: Unit; ids: string[]; days:
             {rows.map((r) => (
               <tr key={r.label} className="border-t">
                 <td className="p-1.5 font-medium">{r.label}</td>
-                {rtq && <td className="p-1.5">{r.counts.belum}</td>}
+                <td className="p-1.5">{r.counts.belum}</td>
                 <td className="p-1.5">{r.counts.draft}</td>
                 <td className={`p-1.5 ${r.counts.submitted ? "font-bold text-amber-700" : ""}`}>{r.counts.submitted}</td>
                 <td className="p-1.5">{r.counts.approved}</td>
@@ -184,7 +184,7 @@ function UnitCard({ unit, ids, days, today }: { unit: Unit; ids: string[]; days:
         </table>
       </div>
       <p className="mt-1 text-xs text-slate-500">
-        {rtq ? "Rapor RTQ dibuat per kuartal. Hanya kuartal yang sudah berjalan yang tampil." : "Rapor TKQ memakai format lama sampai format baru dari klien diterima."}
+        {rtq ? "Rapor dibuat per kuartal. Hanya kuartal yang sudah berjalan yang tampil." : "Rapor TKQ memakai format lama sampai format baru dari klien diterima."}
       </p>
     </section>
   );

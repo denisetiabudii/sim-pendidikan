@@ -8,6 +8,8 @@ import type {
   RecitationQuality,
 } from "./types";
 import { newRtqReport, rtqKey } from "./rtq";
+import { emptyBio, newTkqReport, ratingsFor } from "./tkq";
+import type { Rating, ReportStatus, TkqReport } from "./types";
 
 const addDays = (iso: string, d: number) => {
   const t = new Date(`${iso}T00:00:00Z`);
@@ -332,5 +334,35 @@ export function demoData(today: string): AppData {
     followUp: "",
     createdAt: `${addDays(today, -1)}T04:00:00.000Z`,
   });
+
+    // Rapor TKQ Kuartal 1 (data fiktif).
+  const NARR = "Ananda menunjukkan perkembangan yang baik dan antusias mengikuti kegiatan di kelas. (Contoh isi, data fiktif.)";
+  const SPREAD: Rating[] = ["BSH", "BSB", "BSH", "MB", "BSH", "BSB"];
+  const tkqFull = (id: string, status: ReportStatus, shift: number): TkqReport => ({
+    ...newTkqReport(id, d.academic.year, 1),
+    status,
+    pai: ratingsFor(d.paiTemplate, (i) => SPREAD[(i + shift) % SPREAD.length]),
+    capaian: { agama: NARR, jatiDiri: NARR, literasi: NARR },
+    pertumbuhan: { bb: 17 + shift, tb: 108 + shift, lk: 50 },
+    projek: {
+      topik: "Aku Cinta Indonesia", fase: "Fondasi",
+      dimensi: { iman: NARR, kebinekaan: NARR, gotong: NARR, mandiri: NARR, kreatif: NARR, nalar: NARR },
+    },
+  });
+  const K = (id: string) => rtqKey(id, d.academic.year, 1);
+  d.tkqReports[K("s1")] = { ...tkqFull("s1", "published", 0), absence: { sakit: 1, izin: 0, tanpa: 0 } };
+  d.tkqReports[K("s2")] = { ...tkqFull("s2", "submitted", 1), absence: { sakit: 0, izin: 1, tanpa: 0 } };
+  d.tkqReports[K("s7")] = { ...tkqFull("s7", "approved", 2), absence: { sakit: 0, izin: 0, tanpa: 0 } };
+  d.tkqReports[K("s8")] = tkqFull("s8", "draft", 3); // lengkap, siap diajukan
+  d.tkqReports[K("s3")] = {
+    ...newTkqReport("s3", d.academic.year, 1),
+    pai: ratingsFor(d.paiTemplate, (i) => (i < 20 ? "MB" : "BB")),
+  }; // baru sebagian
+  for (const k of Object.keys(d.tkqReports[K("s3")].pai).slice(20)) delete d.tkqReports[K("s3")].pai[k];
+  d.students.s1.bio = {
+    ...emptyBio(), nickname: "Naira", nomorInduk: "2026001", birthPlace: "Garut", birthDate: "2021-03-14",
+    gender: "Perempuan", religion: "Islam", childNo: "2", father: "Bapak Budi (contoh)", mother: "Ibu Ani (contoh)",
+    village: "Cipicung", district: "Banyuresmi", regency: "Garut", province: "Jawa Barat",
+  };
   return d;
 }

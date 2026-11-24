@@ -4,6 +4,8 @@ import { useStore } from "@/lib/store";
 import { useToday } from "@/lib/useToday";
 import { groupByDay } from "@/lib/groupByDate";
 import type { AuditEntry } from "@/lib/types";
+import RangeBar from "@/components/RangeBar";
+import { useHistoryRange } from "@/lib/useHistoryRange";
 
 const CATS: [string, (a: AuditEntry) => boolean][] = [
   ["Semua", () => true],
@@ -12,7 +14,7 @@ const CATS: [string, (a: AuditEntry) => boolean][] = [
   ["Nilai dan rapor", (a) => /nilai|rapor/i.test(a.action)],
   ["Setoran hafalan", (a) => /setoran/i.test(a.action)],
   ["Catatan dan kejadian", (a) => /kejadian|buku penghubung|catatan/i.test(a.action)],
-  ["Pengaturan dan data", (a) => /bobot|kelompok|pendidik|penugasan|impor|identitas|kuartal|tahun ajaran/i.test(a.action)],
+  ["Pengaturan dan data", (a) => /bobot|kelompok|pendidik|penugasan|impor|identitas|kuartal|tahun ajaran|biodata/i.test(a.action)],
 ];
 
 const time = (iso: string) =>
@@ -23,11 +25,13 @@ export default function Audit() {
   const today = useToday();
   const [cat, setCat] = useState(0);
   const [q, setQ] = useState("");
+  const h = useHistoryRange();
 
   const needle = q.trim().toLowerCase();
-  const rows = data.audit
+  const base = data.audit
     .filter(CATS[cat][1])
     .filter((a) => !needle || [a.actor, a.action, a.object, a.detail].some((s) => s.toLowerCase().includes(needle)));
+  const rows = base.filter((a) => h.keep(a.at));
   const shown = rows.slice(0, 300);
   const groups = groupByDay(shown, (a) => a.at, today);
 
@@ -55,9 +59,7 @@ export default function Audit() {
             </button>
           ))}
         </div>
-        <p className="text-xs text-slate-500">
-          Menampilkan {shown.length} dari {rows.length} catatan{rows.length > 300 ? " (300 terbaru)" : ""}.
-        </p>
+        <RangeBar h={h} shown={rows.length} total={base.length} noun="catatan" note={rows.length > 300 ? "Hanya 300 terbaru yang ditampilkan." : undefined} />
       </div>
 
       {groups.map((g) => (

@@ -62,91 +62,49 @@ describe("dashboard", () => {
       expect(weightsLocked(d, "RTQ")).toBe(false);
     });
   });
-  describe("dashboard per unit dan tugas rapor", () => {
-    const d = demoData("2026-11-15");
-    const scope = (id: string) => myStudentIds(d, d.users[id]);
+describe("dashboard per unit dan tugas rapor", () => {
+  const d = demoData("2026-11-15");
+  const scope = (id: string) => myStudentIds(d, d.users[id]);
 
-    it("PIC RTQ melihat rapor Kuartal 1 menunggu persetujuan walau kuartal berjalan adalah 2", () => {
-      expect(reportTasks(d, d.users.u5, scope("u5"))).toEqual([
-        {
-          unit: "RTQ",
-          quarter: 1,
-          kind: "review",
-          count: 1,
-          href: "/rapor-kuartal",
-        },
-      ]);
-    });
-    it("PIC TKQ: satu menunggu persetujuan dan satu siap dipublikasikan", () => {
-      expect(reportTasks(d, d.users.u2, scope("u2"))).toEqual([
-        { unit: "TKQ", kind: "review", count: 1, href: "/rapor" },
-        { unit: "TKQ", kind: "publish", count: 1, href: "/rapor" },
-      ]);
-    });
-    it("guru hanya melihat rapor siap diajukan di kelompoknya, direktur dan wali tanpa tugas", () => {
-      expect(reportTasks(d, d.users.u3, scope("u3"))).toEqual([
-        { unit: "TKQ", kind: "ready", count: 2, href: "/rapor" },
-      ]);
-      expect(reportTasks(d, d.users.u4, scope("u4"))).toEqual([]);
-      expect(reportTasks(d, d.users.u1, scope("u1"))).toEqual([]);
-      expect(reportTasks(d, d.users.u6, scope("u6"))).toEqual([]);
-    });
-    it("status rapor per unit, RTQ per kuartal yang sudah berjalan", () => {
-      const tkq = scope("u2");
-      expect(reportStatusRows(d, tkq, "TKQ", "2026-11-15")).toEqual([
-        {
-          label: "Rapor",
-          counts: {
-            belum: 0,
-            draft: 4,
-            submitted: 1,
-            approved: 1,
-            published: 1,
-          },
-        },
-      ]);
-      expect(reportStatusRows(d, scope("u5"), "RTQ", "2026-11-15")).toEqual([
-        {
-          label: "Kuartal 1",
-          counts: {
-            belum: 4,
-            draft: 0,
-            submitted: 1,
-            approved: 0,
-            published: 0,
-          },
-        },
-        {
-          label: "Kuartal 2",
-          counts: {
-            belum: 5,
-            draft: 0,
-            submitted: 0,
-            approved: 0,
-            published: 0,
-          },
-        },
-      ]);
-      expect(
-        reportStatusRows(d, scope("u5"), "RTQ", "2026-08-01").map(
-          (r) => r.label,
-        ),
-      ).toEqual(["Kuartal 1"]);
-    });
-    it("bar capaian memakai data sesuai unit", () => {
-      const days = lastDays("2026-11-15", 7);
-      const rtq = progressBars(d, scope("u5"), "RTQ", days);
-      expect(rtq.map((b) => b.label)).toEqual([
-        "Kehadiran 7 hari terakhir",
-        "Santri yang menyetor 7 hari terakhir",
-      ]);
-      expect(rtq[1].pct).toBe(80); // 4 dari 5 santri menyetor dalam 7 hari
-      expect(progressBars(d, scope("u2"), "TKQ", days)[1]).toEqual({
-        label: "Nilai sudah lengkap",
-        pct: 100,
-      });
-    });
+  it("PIC RTQ melihat rapor Kuartal 1 menunggu persetujuan walau kuartal berjalan adalah 2", () => {
+    expect(reportTasks(d, d.users.u5, scope("u5"))).toEqual([
+      { unit: "RTQ", quarter: 1, kind: "review", count: 1, href: "/rapor-kuartal" },
+    ]);
   });
+  it("PIC TKQ: satu menunggu persetujuan dan satu siap dipublikasikan", () => {
+    expect(reportTasks(d, d.users.u2, scope("u2"))).toEqual([
+      { unit: "TKQ", quarter: 1, kind: "review", count: 1, href: "/rapor-tkq" },
+      { unit: "TKQ", quarter: 1, kind: "publish", count: 1, href: "/rapor-tkq" },
+    ]);
+  });
+  it("guru hanya melihat rapor siap diajukan di kelompoknya, direktur dan wali tanpa tugas", () => {
+    expect(reportTasks(d, d.users.u3, scope("u3"))).toEqual([
+      { unit: "TKQ", quarter: 1, kind: "ready", count: 1, href: "/rapor-tkq" }, // Bima
+    ]);
+    expect(reportTasks(d, d.users.u8, scope("u8"))).toEqual([]); // Zahra baru sebagian
+    expect(reportTasks(d, d.users.u4, scope("u4"))).toEqual([]);
+    expect(reportTasks(d, d.users.u1, scope("u1"))).toEqual([]);
+    expect(reportTasks(d, d.users.u6, scope("u6"))).toEqual([]);
+  });
+  it("status rapor per unit dan kuartal yang sudah berjalan", () => {
+    expect(reportStatusRows(d, scope("u2"), "TKQ", "2026-11-15")).toEqual([
+      { label: "Kuartal 1", counts: { belum: 2, draft: 2, submitted: 1, approved: 1, published: 1 } },
+      { label: "Kuartal 2", counts: { belum: 7, draft: 0, submitted: 0, approved: 0, published: 0 } },
+    ]);
+    expect(reportStatusRows(d, scope("u5"), "RTQ", "2026-11-15")).toEqual([
+      { label: "Kuartal 1", counts: { belum: 4, draft: 0, submitted: 1, approved: 0, published: 0 } },
+      { label: "Kuartal 2", counts: { belum: 5, draft: 0, submitted: 0, approved: 0, published: 0 } },
+    ]);
+    expect(reportStatusRows(d, scope("u5"), "RTQ", "2026-08-01").map((r) => r.label)).toEqual(["Kuartal 1"]);
+  });
+  it("bar capaian memakai data sesuai unit", () => {
+    const days = lastDays("2026-11-15", 7);
+    const rtq = progressBars(d, scope("u5"), "RTQ", days);
+    expect(rtq.map((b) => b.label)).toEqual(["Kehadiran 7 hari terakhir", "Santri yang menyetor 7 hari terakhir"]);
+    expect(rtq[1].pct).toBe(80); // 4 dari 5 santri menyetor dalam 7 hari
+    expect(progressBars(d, scope("u2"), "TKQ", days)[1]).toEqual({ label: "Penilaian PAI terisi", pct: 0 }); // kuartal berjalan 2
+  });
+});
   describe("kartu dan tugas dashboard", () => {
   const d = demoData("2026-11-15");
   it("todayCounts menghitung hadir, izin atau sakit, dan jumlah terisi hari ini", () => {

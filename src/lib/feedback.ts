@@ -37,6 +37,9 @@ export const RULES: Record<string, Rule> = {
   addGroup: ok("Kelas atau halaqoh ditambahkan"),
   saveInstitution: ok("Identitas lembaga tersimpan"),
   saveAcademic: ok("Tahun ajaran dan kuartal tersimpan"),
+    saveStudentBio: ok("Biodata tersimpan"),
+  saveTkqDraft: ok("Draft rapor tersimpan"),
+  changeTkqReport: (a) => REPORT[a[2] as string] ?? "Status rapor diperbarui",
 };
 
 // Membungkus aksi store: sukses menampilkan pesan hijau, gagal menampilkan pesan merah.
@@ -44,29 +47,22 @@ export const RULES: Record<string, Rule> = {
 
 
 export function withFeedback<T extends object>(base: T): T {
-  const out = { ...base };
-
-  const mutableOut = out as {
-    [key: string]: unknown;
-  };
-
-  for (const [name, fn] of Object.entries(base)) {
+  const src = base as Record<string, unknown>;
+  const out: Record<string, unknown> = { ...src };
+  for (const [name, fn] of Object.entries(src)) {
+    if (typeof fn !== "function") continue;
     const rule = RULES[name];
-    if (!rule || typeof fn !== "function") continue;
-
-    mutableOut[name] = (...args: unknown[]) => {
-      const r = (fn as (...a: unknown[]) => Res)(...args);
-
-      if (r.ok) {
-        const text = rule(args, r);
-        if (text) notify("success", text);
-      } else if (r.code !== "overlap" && r.error) {
-        notify("error", r.error);
+    out[name] = (...args: unknown[]) => {
+      const r = (fn as (...a: unknown[]) => unknown)(...args);
+      if (r && typeof r === "object" && "ok" in r) {
+        const res = r as Res;
+        if (res.ok) {
+          const text = rule?.(args, res);
+          if (text) notify("success", text);
+        } else if (res.code !== "overlap" && res.error) notify("error", res.error);
       }
-
       return r;
     };
   }
-
-  return out;
+  return out as T;
 }

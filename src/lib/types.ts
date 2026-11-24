@@ -27,11 +27,7 @@ export interface Group {
   name: string;
   unit: Unit;
 }
-export interface Student {
-  id: string;
-  name: string;
-  groupId: string;
-}
+export interface Student { id: string; name: string; groupId: string; bio?: StudentBio }
 export interface Component {
   name: string;
   weight: number;
@@ -66,6 +62,9 @@ export interface AppData {
   rtqReports: Record<string, RtqReport>;
   institution: Institution;
   academic: Academic; // studentId → status rapor
+    paiTemplate: PaiSection[];
+  tkqReports: Record<string, TkqReport>;
+  institutionTkq: Institution;
   audit: AuditEntry[];
 }
 
@@ -163,8 +162,40 @@ export interface Institution {
   city: string;
   mudir: string;
   logoDataUrl?: string;
+  email?: string;
 }
 export interface Academic {
   year: string;
   quarters: { start: string; end: string; signDate: string }[];
 }
+
+export type Rating = "BB" | "MB" | "BSH" | "BSB";
+export interface PaiItem { id: string; text: string; heading?: boolean }
+export interface PaiSection { id: string; no: string; title: string; items: PaiItem[] }
+
+export interface StudentBio {
+  nickname: string; nomorInduk: string; birthPlace: string; birthDate: string; gender: string; religion: string; childNo: string;
+  father: string; mother: string; fatherJob: string; motherJob: string;
+  street: string; phone: string; village: string; district: string; regency: string; province: string;
+  guardianName: string; guardianJob: string; guardianAddress: string;
+}
+
+export interface TkqReport {
+  studentId: string;
+  year: string;
+  quarter: Quarter;
+  status: ReportStatus;
+  version: number;
+  usia: string;
+  pai: Record<string, Rating>;
+  capaian: { agama: string; jatiDiri: string; literasi: string };
+  pertumbuhan: { bb: number | null; tb: number | null; lk: number | null };
+  projek: {
+    topik: string;
+    fase: string;
+    dimensi: { iman: string; kebinekaan: string; gotong: string; mandiri: string; kreatif: string; nalar: string };
+  };
+  absence?: { sakit: number; izin: number; tanpa: number };
+  revisions?: { version: number; reason: string; at: string }[];
+}
+export type TkqContent = Pick<TkqReport, "usia" | "pai" | "capaian" | "pertumbuhan" | "projek">;

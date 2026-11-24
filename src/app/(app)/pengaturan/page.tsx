@@ -2,12 +2,11 @@
 import { useState } from "react";
 import { useStore } from "@/lib/store";
 import { myGroupIds } from "@/lib/access";
-import { weightsLocked, weightsTotal } from "@/lib/grades";
 import type { Unit } from "@/lib/types";
 import InstitutionSettings from "@/components/InstitutionSettings";
 
 export default function Pengaturan() {
-  const { data, currentUserId, setWeight, addGroup } = useStore();
+  const { data, currentUserId, addGroup } = useStore();
   const user = data.users[currentUserId];
   const [msg, setMsg] = useState("");
   const [name, setName] = useState("");
@@ -17,12 +16,6 @@ export default function Pengaturan() {
     user.role === "direktur" ? ["TKQ", "RTQ"] : user.unit ? [user.unit] : [];
   const unit = units.includes(unitPick as Unit) ? (unitPick as Unit) : units[0];
   const groups = myGroupIds(data, user);
-
-  function commitWeight(u: Unit, component: string, raw: string, old: number) {
-    if (raw.trim() === "" || Number(raw) === old) return;
-    const r = setWeight(u, component, Number(raw));
-    setMsg(r.ok ? "" : r.error);
-  }
 
   function add() {
     const r = addGroup(name, unit);
@@ -34,52 +27,12 @@ export default function Pengaturan() {
     <div>
       <h1 className="mb-3 text-xl font-bold">Pengaturan akademik</h1>
 
-      {units
-        .filter((u) => u === "TKQ")
-        .map((u) => {
-          const total = weightsTotal(data.components[u]);
-          const locked = weightsLocked(data, u);
-          return (
-            <section key={u} className="mb-4 rounded border bg-white p-4">
-              <h2 className="mb-2 font-semibold">Komponen dan bobot {u}</h2>
-              {locked && (
-                <p className="mb-2 rounded border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900">
-                  Bobot terkunci karena sudah ada rapor yang disetujui atau
-                  dipublikasikan di unit ini. Perubahan formula setelah rapor
-                  terbit perlu proses versi baru yang menunggu keputusan
-                  akademik.
-                </p>
-              )}
-              {data.components[u].map((c) => (
-                <div
-                  key={c.name}
-                  className="mb-2 flex items-center gap-2 text-sm"
-                >
-                  <span className="w-44">{c.name}</span>
-                  <input
-                    key={`${u}-${c.name}-${c.weight}`}
-                    type="number"
-                    min={0}
-                    max={100}
-                    defaultValue={c.weight}
-                    aria-label={`Bobot ${c.name} ${u}`}
-                    disabled={locked}
-                    className="w-20 rounded border p-1.5 disabled:bg-slate-100"
-                    onBlur={(e) =>
-                      commitWeight(u, c.name, e.target.value, c.weight)
-                    }
-                  />
-                  <span>%</span>
-                </div>
-              ))}
-              <p
-                className={`text-sm font-bold ${total === 100 ? "text-green-700" : "text-red-700"}`}
-              >
-                Total {total}% {total === 100 ? "✓" : "– harus 100%"}
-              </p>
-            </section>
-          );
-        })}
+      {units.includes("TKQ") && (
+        <section className="card p-4 text-sm text-slate-600">
+          <b>TKQ</b> memakai penilaian BB/MB/BSH/BSB di menu Penilaian & Raport, tanpa bobot. Daftar indikator PAI
+          saat ini satu untuk semua kelas, dan editornya menyusul.
+        </section>
+      )}
 
       {units.includes("RTQ") && (
         <section className="mb-4 rounded border bg-white p-4 text-sm text-slate-600">

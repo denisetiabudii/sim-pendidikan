@@ -1,5 +1,5 @@
 "use client";
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import { useStore } from "@/lib/store";
 import type { ReportAction } from "@/lib/store";
 import { useUser } from "@/lib/useUser";
@@ -8,13 +8,20 @@ import { canEditGroup, myStudentIds } from "@/lib/access";
 import { reportTasks } from "@/lib/dashboard";
 import { SURAHS, surahOption } from "@/lib/quran";
 import {
-  AKHLAK_LEGEND, BANDS, DEFAULT_TEXT, MAX_ROWS, PREDIKAT, absenceCounts, currentQuarter, fmtNum,
-  newRtqReport, reportProblems, rowName, rowsFromRecitations, rtqKey, tahfidzAverage, tahfidzPredikat, ziyadah,
+  AKHLAK_LEGEND, BANDS, DEFAULT_TEXT, MAX_ROWS, PREDIKAT, currentQuarter, fmtNum,
+  newRtqReport, reportProblems, rowsFromRecitations, rtqKey, tahfidzAverage, tahfidzPredikat, ziyadah,
 } from "@/lib/rtq";
-import type { Institution, Predikat, Quarter, RtqAspect, RtqReport, RtqSurahRow } from "@/lib/types";
+import type { Predikat, Quarter, RtqAspect, RtqReport, RtqSurahRow } from "@/lib/types";
 import { StatusBadge, StatusSteps } from "@/components/ReportStatus";
 import { Field } from "@/components/FormSection";
 import { notify } from "@/lib/toast";
+import Modal from "@/components/Modal";
+import ActionDialog from "@/components/ActionDialog";
+import type { DialogKind } from "@/components/ActionDialog";
+import GroupAccordion from "@/components/GroupAccordion";
+import type { AccGroup } from "@/components/GroupAccordion";
+import PrintPortal from "@/components/PrintPortal";
+import RtqLetter from "@/components/RtqLetter";
 
 const ASPECTS = [
   ["akhlak", "tuturKata", "Tutur Kata"],
@@ -42,160 +49,169 @@ export default function RaporKuartal() {
   const firstTask = reportTasks(data, user, myStudentIds(data, user)).find((t) => t.unit === "RTQ")?.quarter;
   const quarter = (picked || firstTask || (today ? currentQuarter(data.academic, today) : 1)) as Quarter;
   const [open, setOpen] = useState<{ id: string; mode: "edit" | "view" } | null>(null);
+  const [dlg, setDlg] = useState<{ id: string; kind: DialogKind } | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const [q, setQ] = useState("");
-  const [msg, setMsg] = useState("");
   const year = data.academic.year;
 
   const rep = (id: string) => data.rtqReports[rtqKey(id, year, quarter)];
   const ids = myStudentIds(data, user).filter(
-    (id) =>
-      data.groups[data.students[id].groupId].unit === "RTQ" &&
-      (user.role !== "wali" || rep(id)?.status === "published")
+    (id) => data.groups[data.students[id].groupId].unit === "RTQ" && (user.role !== "wali" || rep(id)?.status === "published")
   );
   const statusOf = (id: string): Filter => rep(id)?.status ?? "belum";
   const count = (f: Filter) => (f === "all" ? ids.length : ids.filter((id) => statusOf(id) === f).length);
-
   const needle = q.trim().toLowerCase();
   const shown = ids.filter(
-    (id) =>
-      (filter === "all" || statusOf(id) === filter) &&
-      (!needle || data.students[id].name.toLowerCase().includes(needle))
+    (id) => (filter === "all" || statusOf(id) === filter) && (!needle || data.students[id].name.toLowerCase().includes(needle))
   );
-  const byGroup = new Map<string, string[]>();
-  for (const id of shown) {
-    const g = data.students[id].groupId;
-    byGroup.set(g, [...(byGroup.get(g) ?? []), id]);
-  }
-  const groups = [...byGroup.entries()].sort((a, b) => data.groups[a[0]].name.localeCompare(data.groups[b[0]].name));
+  const forceOpen = filter !== "all" || needle !== "";
   const head = user.role === "kepala" && user.unit === "RTQ";
+
+  const byGroup = (list: string[]) => {
+    const m = new Map<string, string[]>();
+    for (const id of list) m.set(data.students[id].groupId, [...(m.get(data.students[id].groupId) ?? []), id]);
+    return m;
+  };
+  const all = byGroup(ids);
+  const vis = byGroup(shown);
+  const order = [...(forceOpen ? vis : all).keys()].sort((a, b) => data.groups[a].name.localeCompare(data.groups[b].name));
+  const accGroups: AccGroup[] = order.map((gid) => {
+    const list = all.get(gid) ?? [];
+    const n = (f: Filter) => list.filter((id) => statusOf(id) === f).length;
+    return {
+      id: gid,
+      title: data.groups[gid].name,
+      total: list.length,
+      chips: [
+        { label: "belum diisi", n: n("belum"), cls: "badge-warn" },
+        { label: "draft", n: n("draft") },
+        { label: "menunggu persetujuan", n: n("submitted"), cls: "badge-warn" },
+        { label: "disetujui", n: n("approved"), cls: "badge-accent" },
+        { label: "terbit", n: n("published"), cls: "badge-ok" },
+      ],
+    };
+  });
 
   function act(id: string, action: ReportAction) {
     setPicked(quarter);
-    let reason: string | undefined;
-    if (action === "publish" && !confirm("Publikasikan rapor ke orang tua? Rapor akan terkunci.")) return;
-    if (action === "revise") reason = prompt("Alasan revisi rapor:") ?? "";
-    const r = changeRtqReport(id, quarter, action, reason);
-    setMsg(r.ok ? "" : r.error);
+    changeRtqReport(id, quarter, action);
+  }
+  function runDialog(reason?: string) {
+    if (!dlg) return;
+    setPicked(quarter);
+    if (changeRtqReport(dlg.id, quarter, dlg.kind, reason).ok) setDlg(null);
   }
 
-  const openItem = open && ids.includes(open.id) ? open : null;
+  const cur = open && ids.includes(open.id) ? open : null;
+  const curRep = cur ? rep(cur.id) : undefined;
 
   return (
     <div className="space-y-4">
-      <div className="space-y-4 print:hidden">
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="flex-1">Rapor kuartal RTQ</h1>
-          <span className="text-sm text-slate-600">Tahun ajaran {year}</span>
-          <select
-            className="text-sm"
-            value={quarter}
-            aria-label="Kuartal"
-            onChange={(e) => {
-              setPicked(Number(e.target.value) as Quarter);
-              setOpen(null);
-            }}
-          >
-            {[1, 2, 3].map((k) => (
-              <option key={k} value={k}>Kuartal {k}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="card space-y-3 p-3">
-          <input
-            className="w-full"
-            placeholder="Cari nama santri…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            aria-label="Cari nama santri"
-          />
-          <div className="flex flex-wrap gap-2">
-            {FILTERS.map(([f, label]) => (
+      <div className="flex flex-wrap items-center gap-3">
+        <h1 className="flex-1">Rapor kuartal RTQ</h1>
+        <span className="text-sm text-slate-600">Tahun ajaran {year}</span>
+        <div className="flex gap-1.5" role="group" aria-label="Kuartal">
+          {([1, 2, 3] as Quarter[]).map((k) => {
+            const n = ids.filter((id) => data.rtqReports[rtqKey(id, year, k)]).length;
+            return (
               <button
-                key={f}
-                aria-pressed={filter === f}
-                onClick={() => setFilter(f)}
-                className={`rounded-full border px-3 py-1 text-sm ${filter === f ? "border-transparent bg-accent text-white" : "bg-white"}`}
+                key={k}
+                aria-pressed={quarter === k}
+                onClick={() => { setPicked(k); setOpen(null); }}
+                className={`rounded-lg border px-3 py-1.5 text-sm ${quarter === k ? "bg-accent text-white" : "bg-white"}`}
               >
-                {label} <span className="opacity-70">{count(f)}</span>
+                Kuartal {k} <span className="opacity-70">({n})</span>
               </button>
-            ))}
-          </div>
+            );
+          })}
         </div>
-
-        {msg && <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800" role="alert">{msg}</p>}
-
-        {groups.map(([gid, list]) => (
-          <section key={gid} className="card overflow-hidden">
-            <h2 className="flex items-center gap-2 border-b bg-slate-50 px-4 py-2.5 text-sm">
-              {data.groups[gid].name}
-              <span className="badge">{list.length} santri</span>
-            </h2>
-            <ul className="divide-y">
-              {list.map((id) => {
-                const s = data.students[id];
-                const r = rep(id);
-                const avg = r ? tahfidzAverage(r.tahfidz) : null;
-                const canTeach = user.role === "pendidik" && canEditGroup(data, user, s.groupId) && (!r || r.status === "draft");
-                return (
-                  <li key={id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
-                    <div className="min-w-40 flex-1">
-                      <div className="font-medium">{s.name}</div>
-                      {r ? <StatusSteps status={r.status} /> : <span className="badge badge-warn mt-1">Belum diisi</span>}
-                    </div>
-                    <div className="text-sm text-slate-600">
-                      Rata-rata tahfidz <b className="text-slate-900">{fmtNum(avg)}</b>
-                      {r && <StatusBadge status={r.status} version={r.version} />}
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {canTeach && (
-                        <button className="rounded-lg border px-3 py-1.5 text-sm" onClick={() => setOpen({ id, mode: "edit" })}>
-                          Isi rapor
-                        </button>
-                      )}
-                      {canTeach && r && (
-                        <button className="rounded-lg bg-accent px-3 py-1.5 text-sm text-white" onClick={() => act(id, "submit")}>
-                          Ajukan
-                        </button>
-                      )}
-                      {head && r?.status === "submitted" && (
-                        <>
-                          <button className="rounded-lg bg-accent px-3 py-1.5 text-sm text-white" onClick={() => act(id, "approve")}>Setujui</button>
-                          <button className="rounded-lg border px-3 py-1.5 text-sm" onClick={() => act(id, "return")}>Kembalikan</button>
-                        </>
-                      )}
-                      {head && r?.status === "approved" && (
-                        <button className="rounded-lg bg-accent px-3 py-1.5 text-sm text-white" onClick={() => act(id, "publish")}>Publikasikan</button>
-                      )}
-                      {head && r?.status === "published" && (
-                        <button className="rounded-lg border px-3 py-1.5 text-sm" onClick={() => act(id, "revise")}>Buat revisi</button>
-                      )}
-                      {r && (
-                        <button className="rounded-lg border px-3 py-1.5 text-sm" onClick={() => setOpen({ id, mode: "view" })}>Lihat</button>
-                      )}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-        ))}
-
-        {groups.length === 0 && (
-          <p className="card p-4 text-sm text-slate-500">
-            {ids.length === 0
-              ? user.role === "wali" ? "Belum ada rapor yang dipublikasikan." : "Tidak ada santri RTQ dalam cakupan Anda."
-              : "Tidak ada santri yang cocok dengan filter."}
-          </p>
-        )}
-        <p className="text-xs text-slate-500">
-          Alur: draft → diajukan → disetujui PIC unit → dipublikasikan (terkunci). Revisi membuat versi baru dengan alasan.
-        </p>
       </div>
 
-      {openItem?.mode === "edit" && <Editor key={`${openItem.id}-${quarter}`} studentId={openItem.id} quarter={quarter} />}
-      {openItem?.mode === "view" && <Letter studentId={openItem.id} quarter={quarter} />}
+      <div className="card space-y-3 p-3">
+        <input className="w-full" placeholder="Cari nama santri…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Cari nama santri" />
+        <div className="flex flex-wrap gap-2">
+          {FILTERS.map(([f, label]) => (
+            <button
+              key={f}
+              aria-pressed={filter === f}
+              onClick={() => setFilter(f)}
+              className={`rounded-full border px-3 py-1 text-sm ${filter === f ? "bg-accent text-white" : "bg-white"}`}
+            >
+              {label} <span className="opacity-70">{count(f)}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <GroupAccordion
+        groups={accGroups}
+        forceOpen={forceOpen}
+        render={(gid) => (
+          <ul className="divide-y">
+            {(vis.get(gid) ?? []).map((id) => {
+              const s = data.students[id];
+              const r = rep(id);
+              const avg = r ? tahfidzAverage(r.tahfidz) : null;
+              const canTeach = user.role === "pendidik" && canEditGroup(data, user, s.groupId) && (!r || r.status === "draft");
+              return (
+                <li key={id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+                  <div className="min-w-40 flex-1">
+                    <div className="font-medium">{s.name}</div>
+                    {r ? <StatusSteps status={r.status} /> : <span className="badge badge-warn mt-1">Belum diisi</span>}
+                  </div>
+                  <div className="text-sm text-slate-600">
+                    Rata-rata tahfidz <b className="text-slate-900">{fmtNum(avg)}</b>{" "}
+                    {r && <StatusBadge status={r.status} version={r.version} />}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {canTeach && <button className="rounded-lg border px-3 py-1.5 text-sm" onClick={() => setOpen({ id, mode: "edit" })}>Isi rapor</button>}
+                    {canTeach && r && <button className="rounded-lg bg-accent px-3 py-1.5 text-sm text-white" onClick={() => setDlg({ id, kind: "submit" })}>Ajukan</button>}
+                    {head && r?.status === "submitted" && (
+                      <>
+                        <button className="rounded-lg bg-accent px-3 py-1.5 text-sm text-white" onClick={() => act(id, "approve")}>Setujui</button>
+                        <button className="rounded-lg border px-3 py-1.5 text-sm" onClick={() => act(id, "return")}>Kembalikan</button>
+                      </>
+                    )}
+                    {head && r?.status === "approved" && <button className="rounded-lg bg-accent px-3 py-1.5 text-sm text-white" onClick={() => setDlg({ id, kind: "publish" })}>Publikasikan</button>}
+                    {head && r?.status === "published" && <button className="rounded-lg border px-3 py-1.5 text-sm" onClick={() => setDlg({ id, kind: "revise" })}>Buat revisi</button>}
+                    {r && <button className="rounded-lg border px-3 py-1.5 text-sm" onClick={() => setOpen({ id, mode: "view" })}>Lihat</button>}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      />
+
+      {accGroups.length === 0 && (
+        <p className="card p-4 text-sm text-slate-500">
+          {ids.length === 0
+            ? user.role === "wali" ? "Belum ada rapor yang dipublikasikan." : "Tidak ada santri RTQ dalam cakupan Anda."
+            : "Tidak ada santri yang cocok dengan filter."}
+        </p>
+      )}
+      <p className="text-xs text-slate-500">
+        Alur: draft → diajukan → disetujui PIC unit → dipublikasikan (terkunci). Revisi membuat versi baru dengan alasan.
+      </p>
+
+      {cur?.mode === "edit" && <Editor key={`${cur.id}-${quarter}`} studentId={cur.id} quarter={quarter} onClose={() => setOpen(null)} />}
+            {cur?.mode === "view" && curRep && (
+        <>
+          <Modal
+            size="xl"
+            title={`Rapor ${data.students[cur.id].name}`}
+            subtitle={`Kuartal ${quarter} · Tahun ajaran ${year}`}
+            cancelLabel="Tutup"
+            onClose={() => setOpen(null)}
+            footerNote={curRep.status !== "published" ? <span className="text-amber-800">Belum dipublikasikan. Isi masih bisa berubah.</span> : undefined}
+            extra={<button className="rounded-lg bg-accent px-4 py-2 text-sm text-white" onClick={() => window.print()}>Cetak / simpan PDF</button>}
+          >
+            <RtqLetter studentId={cur.id} quarter={quarter} />
+          </Modal>
+          <PrintPortal><RtqLetter studentId={cur.id} quarter={quarter} /></PrintPortal>
+        </>
+      )}
+      {dlg && <ActionDialog kind={dlg.kind} name={data.students[dlg.id].name} onCancel={() => setDlg(null)} onConfirm={runDialog} />}
     </div>
   );
 }
@@ -219,7 +235,7 @@ function Section({
   );
 }
 
-function Editor({ studentId, quarter }: { studentId: string; quarter: Quarter }) {
+function Editor({ studentId, quarter, onClose }: { studentId: string; quarter: Quarter; onClose: () => void }) {
   const { data, saveRtqDraft } = useStore();
   const year = data.academic.year;
   const s = data.students[studentId];
@@ -228,6 +244,7 @@ function Editor({ studentId, quarter }: { studentId: string; quarter: Quarter })
     akhlak: existing.akhlak, tahsin: existing.tahsin, tahfidz: existing.tahfidz, catatan: existing.catatan,
   });
   const [msg, setMsg] = useState("");
+  const [initial] = useState(() => JSON.stringify(f));
 
   const setAspect = (g: "akhlak" | "tahsin", k: string, patch: Partial<RtqAspect>) =>
     setF({ ...f, [g]: { ...f[g], [k]: { ...(f[g] as Record<string, RtqAspect>)[k], ...patch } } });
@@ -291,10 +308,22 @@ function Editor({ studentId, quarter }: { studentId: string; quarter: Quarter })
     });
 
   return (
-    <section className="space-y-3 print:hidden">
+    <Modal
+      size="xl"
+      title={`Rapor RTQ: ${s.name}`}
+      subtitle={`Kuartal ${quarter} · Tahun ajaran ${year}`}
+      onClose={onClose}
+      dirty={JSON.stringify(f) !== initial}
+      saveLabel="Simpan draft"
+      onSave={() => {
+        if (saveRtqDraft(studentId, quarter, f).ok) onClose();
+      }}
+      footerNote={<span>{msg || (ready ? "Semua isian wajib lengkap." : "Lengkapi bagian bertanda kuning.")}</span>}
+    >
+    <div className="space-y-3">
       <div className="card space-y-2 p-4">
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="flex-1">Isi rapor: {s.name} · Kuartal {quarter}</h2>
+          <span className="flex-1" />
           <span className={`badge ${ready ? "badge-ok" : "badge-warn"}`}>{ready ? "Siap diajukan" : "Belum lengkap"}</span>
         </div>
         <StatusSteps status={existing.status} />
@@ -386,303 +415,7 @@ function Editor({ studentId, quarter }: { studentId: string; quarter: Quarter })
           <textarea className="w-full" rows={3} maxLength={1000} value={f.catatan} onChange={(e) => setF({ ...f, catatan: e.target.value })} />
         </Field>
       </Section>
-
-      <div className="sticky bottom-0 z-10 flex flex-wrap items-center gap-3 rounded-lg border bg-white/95 p-3 shadow-lg backdrop-blur">
-        <button
-          className="rounded-lg bg-accent px-4 py-2 text-sm text-white"
-          onClick={() => {
-            const r = saveRtqDraft(studentId, quarter, f);
-            setMsg(r.ok ? "Draft tersimpan. Klik Ajukan di daftar bila sudah lengkap." : r.error);
-          }}
-        >
-          Simpan draft
-        </button>
-        <p className="flex-1 text-sm" role="status">{msg || (ready ? "Semua isian wajib lengkap." : "Lengkapi bagian bertanda kuning.")}</p>
-      </div>
-    </section>
-  );
-}
-
-const blue = "bg-[#4472c4] text-white font-bold text-center p-1";
-const cell = "border border-slate-400 p-1.5 align-top";
-
-function LetterHead({ ins }: { ins: Institution }) {
-  return (
-    <div className="mb-3 border-b-4 border-double border-black pb-2">
-      <div className="flex items-center gap-3">
-        {ins.logoDataUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={ins.logoDataUrl}
-            alt="Logo lembaga"
-            className="h-16 w-16 object-contain"
-          />
-        ) : (
-          <div className="flex h-16 w-16 items-center justify-center border border-dashed text-[10px] text-slate-400 print:border-slate-300">
-            Logo
-          </div>
-        )}
-        <div className="flex-1 text-center font-serif">
-          <div className="text-2xl font-bold uppercase">{ins.name}</div>
-          <div className="text-[11px]">{ins.address}</div>
-          <div className="text-[11px]">
-            Nomor Statistik LPQ. {ins.nomorStatistik}
-          </div>
-        </div>
-      </div>
     </div>
-  );
-}
-
-function AspectTable({
-  title,
-  items,
-}: {
-  title: string;
-  items: [string, RtqAspect][];
-}) {
-  return (
-    <table className="mb-3 w-full border-collapse text-sm">
-      <thead>
-        <tr>
-          <th colSpan={3} className={blue}>
-            {title}
-          </th>
-        </tr>
-        <tr>
-          <th className={cell}>Aspek Penilaian</th>
-          <th className={cell}>Keterangan</th>
-          <th className={`${cell} w-16`}>Predikat</th>
-        </tr>
-      </thead>
-      <tbody>
-        {items.map(([label, a]) => (
-          <tr key={label}>
-            <td className={cell}>{label}</td>
-            <td className={cell}>{a.text}</td>
-            <td className={`${cell} text-center`}>{a.predikat}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
-function Letter({
-  studentId,
-  quarter,
-}: {
-  studentId: string;
-  quarter: Quarter;
-}) {
-  const { data } = useStore();
-  const { institution: ins, academic } = data;
-  const s = data.students[studentId];
-  const g = data.groups[s.groupId];
-  const r = data.rtqReports[rtqKey(studentId, academic.year, quarter)];
-  if (!r) return null;
-
-  const q = academic.quarters[quarter - 1];
-  const abs = r.absence ?? absenceCounts(data, studentId, q.start, q.end);
-  const avg = tahfidzAverage(r.tahfidz);
-  const band = tahfidzPredikat(avg);
-  const teacher = Object.values(data.users).find(
-    (u) => u.role === "pendidik" && u.groupIds?.includes(s.groupId),
-  );
-  const signDate = new Date(`${q.signDate}T00:00:00Z`).toLocaleDateString(
-    "id-ID",
-    {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-      timeZone: "UTC",
-    },
-  );
-
-  return (
-    <section className="mx-auto mt-4 max-w-3xl bg-white p-6 font-serif text-sm shadow print:mt-0 print:max-w-none print:p-0 print:shadow-none">
-      <div className="mb-3 flex items-center gap-2 print:hidden">
-        <button
-          className="rounded bg-teal-700 px-3 py-1.5 text-sm text-white"
-          onClick={() => window.print()}
-        >
-          Cetak / simpan PDF
-        </button>
-        {r.status !== "published" && (
-          <span className="text-xs text-amber-800">
-            Belum dipublikasikan. Isi masih bisa berubah.
-          </span>
-        )}
-      </div>
-
-      <LetterHead ins={ins} />
-      <h2 className="mb-3 text-center text-lg font-bold">
-        DAFTAR NILAI EVALUASI KUARTAL {quarter}
-        <br />
-        TAHUN AJARAN {academic.year}
-      </h2>
-      <p>Nama Lengkap Santri : {s.name}</p>
-      <p className="mb-3">Nama Halaqah : {g.name}</p>
-
-      <AspectTable
-        title="NILAI AKHLAK"
-        items={[
-          ["Tutur Kata", r.akhlak.tuturKata],
-          ["Sikap", r.akhlak.sikap],
-        ]}
-      />
-      <AspectTable
-        title="NILAI TAHSIN"
-        items={[
-          ["Kelancaran", r.tahsin.kelancaran],
-          ["Makhroj & Sifatul Huruf", r.tahsin.makhraj],
-          ["Hukum Tajwid", r.tahsin.tajwid],
-        ]}
-      />
-
-      <table className="mb-3 w-full border-collapse text-xs">
-        <thead>
-          <tr>
-            <th colSpan={4} className={blue}>
-              KETERANGAN PREDIKAT NILAI AKHLAK
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {[0, 1, 2, 3].map((i) => (
-            <tr key={i}>
-              {[PREDIKAT[i], PREDIKAT[i + 4]].map((p) => (
-                <Fragment key={p}>
-                  <td className={`${cell} w-10`}>{p}</td>
-                  <td className={cell}>{AKHLAK_LEGEND[p]}</td>
-                </Fragment>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      <div className="break-before-page" />
-      <LetterHead ins={ins} />
-      <table className="mb-3 w-full border-collapse text-sm">
-        <thead>
-          <tr>
-            <th colSpan={5} className={blue}>
-              NILAI TAHFIDZ
-            </th>
-          </tr>
-          <tr>
-            <th className={`${cell} w-10`}>No</th>
-            <th className={cell}>Nama Surat</th>
-            <th className={cell}>Ayat</th>
-            <th className={cell}>Nilai Harian</th>
-            <th className={cell}>Nilai Evaluasi</th>
-          </tr>
-        </thead>
-        <tbody>
-          {Array.from({ length: MAX_ROWS }, (_, i) => r.tahfidz[i]).map(
-            (row, i) => (
-              <tr key={i} className="h-7">
-                <td className={`${cell} text-center`}>{i + 1}</td>
-                <td
-                  className={`${cell} text-center text-lg`}
-                  dir="rtl"
-                  lang="ar"
-                >
-                  {row ? rowName(row) : ""}
-                </td>
-                <td className={`${cell} text-center`}>
-                  {row ? `${row.from} - ${row.to}` : ""}
-                </td>
-                <td className={`${cell} text-center`}>{row?.harian ?? ""}</td>
-                <td className={`${cell} text-center`}>{row?.evaluasi ?? ""}</td>
-              </tr>
-            ),
-          )}
-          <tr className="bg-[#ed7d31] font-bold text-white">
-            <td colSpan={2} className={`${cell} text-center`}>
-              RATA-RATA NILAI
-            </td>
-            <td className={`${cell} text-center`}>{band?.predikat ?? "–"}</td>
-            <td className={`${cell} text-center`}>{fmtNum(avg)}</td>
-            <td className={`${cell} text-center uppercase`}>
-              {band?.name ?? ""}
-            </td>
-          </tr>
-        </tbody>
-      </table>
-
-      <table className="mb-3 w-full border-collapse text-sm">
-        <thead>
-          <tr>
-            <th className={blue} colSpan={2}>
-              Ketidakhadiran
-            </th>
-            <th className={blue}>Jumlah Ziyadah</th>
-            <th className={blue}>Catatan</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td className={cell}>Sakit</td>
-            <td className={cell}>{abs.sakit} hari</td>
-            <td rowSpan={3} className={`${cell} text-center align-middle`}>
-              {ziyadah(r.tahfidz)} Ayat
-            </td>
-            <td rowSpan={3} className={`${cell} text-center align-middle`}>
-              {r.catatan}
-            </td>
-          </tr>
-          <tr>
-            <td className={cell}>Izin</td>
-            <td className={cell}>{abs.izin} hari</td>
-          </tr>
-          <tr>
-            <td className={cell}>Tanpa Keterangan</td>
-            <td className={cell}>{abs.tanpa} hari</td>
-          </tr>
-        </tbody>
-      </table>
-
-      <table className="mb-4 w-full border-collapse text-xs">
-        <thead>
-          <tr>
-            <th colSpan={6} className={blue}>
-              KETERANGAN PREDIKAT NILAI TAHSIN & TAHFIDZ
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {[0, 1, 2, 3].map((i) => (
-            <tr key={i}>
-              {[BANDS[i], BANDS[i + 4]].map((b) => (
-                <Fragment key={b.predikat}>
-                  <td className={`${cell} w-8`}>{b.predikat}</td>
-                  <td className={cell}>{b.name}</td>
-                  <td className={cell}>
-                    {b.min}-{b.max}
-                  </td>
-                </Fragment>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      <div className="flex justify-between pt-2 text-sm font-bold">
-        <div>
-          Mudir {ins.name}
-          <div className="h-16" />
-          <u>{ins.mudir}</u>
-        </div>
-        <div className="text-right">
-          {ins.city}, {signDate}
-          <br />
-          Pembimbing
-          <div className="h-12" />
-          <u>{teacher?.name ?? "………………"}</u>
-        </div>
-      </div>
-    </section>
+    </Modal>
   );
 }

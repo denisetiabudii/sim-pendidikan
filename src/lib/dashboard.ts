@@ -1,9 +1,9 @@
 import { canViewIncident, myGroupIds } from "./access";
 import { finalScore } from "./grades";
 import { getReport } from "./reports";
-import type { AppData, User, Quarter, ReportStatus, Unit } from "./types";
-import { reportProblems, rtqKey } from "./rtq";
-
+import type { AppData, User, Quarter, ReportStatus, Unit, RtqReport, TkqReport } from "./types";
+import { reportProblems, rtqKey, currentQuarter } from "./rtq";
+import { reportProblemsTkq, paiTotals, ratedItems } from "./tkq";
 
 // Daftar tanggal berurutan (terlama ke terbaru) yang berakhir pada `today`.
 export function lastDays(today: string, n: number): string[] {
@@ -90,21 +90,6 @@ export function reportCountsUnit(data: AppData, ids: string[], quarter: Quarter)
   return b;
 }
 
-export function progressBars(data: AppData, ids: string[], unit: Unit, days: string[]) {
-  const pct = (n: number, d: number) => (d ? Math.round((n / d) * 100) : null);
-  const total = ids.length;
-  const bars: { label: string; pct: number | null }[] = [
-    { label: "Kehadiran 7 hari terakhir", pct: attendanceRate(data, ids, days) },
-  ];
-  if (unit === "TKQ") bars.push({ label: "Nilai sudah lengkap", pct: pct(total - incompleteScores(data, ids), total) });
-  else {
-    const set = new Set(days);
-    const active = ids.filter((id) => data.recitations.some((r) => r.studentId === id && set.has(r.date))).length;
-    bars.push({ label: "Santri yang menyetor 7 hari terakhir", pct: pct(active, total) });
-  }
-  return bars;
-}
-
 export interface StatusCounts {
   belum: number;
   draft: number;
@@ -114,25 +99,19 @@ export interface StatusCounts {
 }
 const emptyCounts = (): StatusCounts => ({ belum: 0, draft: 0, submitted: 0, approved: 0, published: 0 });
 
-// Status rapor per unit. RTQ per kuartal (hanya kuartal yang sudah berjalan atau sudah punya rapor).
+const repsOf = (data: AppData, unit: Unit) => (unit === "TKQ" ? data.tkqReports : data.rtqReports);
+
+// Status rapor per unit dan kuartal (hanya kuartal yang sudah berjalan atau sudah punya rapor).
 export function reportStatusRows(data: AppData, ids: string[], unit: Unit, today: string) {
   const mine = ids.filter((id) => unitOf(data, id) === unit);
-  if (unit === "TKQ") {
-    const c = emptyCounts();
-    for (const id of mine) c[getReport(data, id).status]++;
-    return [{ label: "Rapor", counts: c }];
-  }
+  const reps = repsOf(data, unit);
   const year = data.academic.year;
   return ([1, 2, 3] as Quarter[])
-    .filter(
-      (q) =>
-        today >= data.academic.quarters[q - 1].start ||
-        mine.some((id) => data.rtqReports[rtqKey(id, year, q)])
-    )
+    .filter((q) => today >= data.academic.quarters[q - 1].start || mine.some((id) => reps[rtqKey(id, year, q)]))
     .map((q) => {
       const c = emptyCounts();
       for (const id of mine) {
-        const r = data.rtqReports[rtqKey(id, year, q)];
+        const r = reps[rtqKey(id, year, q)];
         if (r) c[r.status]++;
         else c.belum++;
       }
@@ -153,39 +132,66 @@ export function reportTasks(data: AppData, user: User, ids: string[]): ReportTas
   if (user.role !== "pendidik" && user.role !== "kepala") return [];
   const kinds: ReportTask["kind"][] = user.role === "pendidik" ? ["ready"] : ["review", "publish"];
   const out: ReportTask[] = [];
-
-  const add = (unit: Unit, quarter: Quarter | undefined, items: { status: ReportStatus; ready: boolean }[]) => {
-    const c = { ready: 0, review: 0, publish: 0 };
-    for (const s of items) {
-      if (s.status === "draft" && s.ready) c.ready++;
-      else if (s.status === "submitted") c.review++;
-      else if (s.status === "approved") c.publish++;
+  for (const unit of ["TKQ", "RTQ"] as Unit[]) {
+    const mine = ids.filter((id) => unitOf(data, id) === unit);
+    const reps = repsOf(data, unit);
+    for (const q of [1, 2, 3] as Quarter[]) {
+      const c = { ready: 0, review: 0, publish: 0 };
+      for (const id of mine) {
+        const r = reps[rtqKey(id, data.academic.year, q)];
+        if (!r) continue;
+        if (r.status === "draft") {
+          const problems =
+            unit === "TKQ" ? reportProblemsTkq(r as TkqReport, data.paiTemplate) : reportProblems(r as RtqReport);
+          if (problems.length === 0) c.ready++;
+        } else if (r.status === "submitted") c.review++;
+        else if (r.status === "approved") c.publish++;
+      }
+      for (const k of kinds)
+        if (c[k] > 0)
+          out.push({ unit, quarter: q, kind: k, count: c[k], href: unit === "TKQ" ? "/rapor-tkq" : "/rapor-kuartal" });
     }
-    for (const k of kinds)
-      if (c[k] > 0)
-        out.push({ unit, quarter, kind: k, count: c[k], href: unit === "RTQ" ? "/rapor-kuartal" : "/rapor" });
-  };
-
-  add(
-    "TKQ",
-    undefined,
-    ids
-      .filter((id) => unitOf(data, id) === "TKQ")
-      .map((id) => ({
-        status: getReport(data, id).status,
-        ready: finalScore(data.components.TKQ, data.scores[id]) !== null,
-      }))
-  );
-
-  const rtq = ids.filter((id) => unitOf(data, id) === "RTQ");
-  for (const q of [1, 2, 3] as Quarter[]) {
-    const items = rtq.flatMap((id) => {
-      const r = data.rtqReports[rtqKey(id, data.academic.year, q)];
-      return r ? [{ status: r.status, ready: reportProblems(r).length === 0 }] : [];
-    });
-    add("RTQ", q, items);
   }
   return out;
+}
+
+export function progressBars(data: AppData, ids: string[], unit: Unit, days: string[]) {
+  const pct = (n: number, d: number) => (d ? Math.round((n / d) * 100) : null);
+  const total = ids.length;
+  const bars: { label: string; pct: number | null }[] = [
+    { label: "Kehadiran 7 hari terakhir", pct: attendanceRate(data, ids, days) },
+  ];
+  if (unit === "TKQ") {
+    const q = currentQuarter(data.academic, days[days.length - 1] ?? "");
+    const per = ratedItems(data.paiTemplate).length;
+    const done = ids.reduce((a, id) => {
+      const r = data.tkqReports[rtqKey(id, data.academic.year, q)];
+      return a + (r ? paiTotals(data.paiTemplate, r.pai).done : 0);
+    }, 0);
+    bars.push({ label: "Penilaian PAI terisi", pct: pct(done, per * total) });
+  } else {
+    const set = new Set(days);
+    const active = ids.filter((id) => data.recitations.some((r) => r.studentId === id && set.has(r.date))).length;
+    bars.push({ label: "Santri yang menyetor 7 hari terakhir", pct: pct(active, total) });
+  }
+  return bars;
+}
+
+export function buildTasks(data: AppData, user: User, ids: string[], today: string) {
+  const tasks: { href: string; text: string }[] = [];
+  if (user.role === "direktur" || user.role === "wali") return tasks;
+  for (const m of missingAttendance(data, user, today)) {
+    const g = data.groups[m.groupId];
+    tasks.push({ href: "/absensi", text: `Absensi hari ini belum diisi: ${g.unit} ${g.name} (${m.missing} dari ${m.total} peserta)` });
+  }
+  for (const t of reportTasks(data, user, ids)) tasks.push({ href: t.href, text: taskText(t) });
+  if (user.role === "kepala") {
+    const n = data.incidents.filter(
+      (i) => i.status === "Baru" && ids.includes(i.studentId) && canViewIncident(data, user, i)
+    ).length;
+    if (n) tasks.push({ href: "/kejadian", text: `${n} catatan kejadian baru belum ditindaklanjuti` });
+  }
+  return tasks;
 }
 
 export function taskText(t: ReportTask): string {
@@ -200,26 +206,4 @@ export function todayCounts(data: AppData, ids: string[], today: string) {
   const rec = data.attendance.filter((a) => set.has(a.studentId) && a.date === today);
   const n = (...s: string[]) => rec.filter((a) => s.includes(a.status)).length;
   return { hadir: n("Hadir", "Terlambat"), izinSakit: n("Izin", "Sakit"), filled: rec.length };
-}
-
-// Daftar "perlu dikerjakan". Dipakai dashboard dan lonceng di header supaya angkanya sama.
-export function buildTasks(data: AppData, user: User, ids: string[], today: string) {
-  const tasks: { href: string; text: string }[] = [];
-  if (user.role === "direktur" || user.role === "wali") return tasks;
-  for (const m of missingAttendance(data, user, today)) {
-    const g = data.groups[m.groupId];
-    tasks.push({ href: "/absensi", text: `Absensi hari ini belum diisi: ${g.unit} ${g.name} (${m.missing} dari ${m.total} peserta)` });
-  }
-  if (user.role === "pendidik") {
-    const inc = incompleteScores(data, ids.filter((id) => unitOf(data, id) === "TKQ"));
-    if (inc) tasks.push({ href: "/nilai", text: `${inc} peserta nilainya belum lengkap` });
-  }
-  for (const t of reportTasks(data, user, ids)) tasks.push({ href: t.href, text: taskText(t) });
-  if (user.role === "kepala") {
-    const n = data.incidents.filter(
-      (i) => i.status === "Baru" && ids.includes(i.studentId) && canViewIncident(data, user, i)
-    ).length;
-    if (n) tasks.push({ href: "/kejadian", text: `${n} catatan kejadian baru belum ditindaklanjuti` });
-  }
-  return tasks;
 }

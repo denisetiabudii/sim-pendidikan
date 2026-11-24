@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { useStore } from "../store";
 import { seed } from "../seed";
 import { demoData } from "../demo";
+import { emptyBio, ratingsFor } from "../tkq";
 
 const st = () => useStore.getState();
 const fresh = (userId: string) =>
@@ -513,4 +514,74 @@ describe("setoran hafalan", () => {
       expect(st().saveAcademic("2027/2028", q)).toMatchObject({ ok: false });
     });
   });
+
+  describe("rapor TKQ", () => {
+  const txt = "Ananda berkembang baik.";
+  const content = (over: Record<string, unknown> = {}) => ({
+    usia: "5 – 6 Tahun",
+    pai: ratingsFor(seed().paiTemplate, () => "BSH" as const),
+    capaian: { agama: txt, jatiDiri: txt, literasi: txt },
+    pertumbuhan: { bb: 18, tb: 110, lk: 50 },
+    projek: {
+      topik: "Aku Cinta Indonesia", fase: "Fondasi",
+      dimensi: { iman: txt, kebinekaan: txt, gotong: txt, mandiri: txt, kreatif: txt, nalar: txt },
+    },
+    ...over,
+  });
+
+  it("hanya guru kelasnya yang boleh mengisi, dan hanya untuk peserta TKQ", () => {
+    login("u3");
+    expect(st().saveTkqDraft("s1", 1, content()).ok).toBe(true);
+    expect(st().saveTkqDraft("s3", 1, content())).toMatchObject(denied); // kelas B
+    login("u4");
+    expect(st().saveTkqDraft("s1", 1, content())).toMatchObject(denied); // murabbi RTQ
+    expect(st().saveTkqDraft("s4", 1, content())).toMatchObject({ ok: false }); // peserta RTQ
+    login("u2");
+    expect(st().saveTkqDraft("s1", 1, content())).toMatchObject(denied); // PIC tidak mengisi
+  });
+  it("penilaian dan pertumbuhan yang tidak valid ditolak di store", () => {
+    login("u3");
+    expect(st().saveTkqDraft("s1", 1, content({ pai: { "sI-1": "XX" } }))).toMatchObject({ ok: false });
+    expect(st().saveTkqDraft("s1", 1, content({ pertumbuhan: { bb: 500, tb: null, lk: null } }))).toMatchObject({ ok: false });
+  });
+  it("alur lengkap: belum lengkap tidak bisa diajukan, lalu persetujuan, penguncian, dan revisi", () => {
+    login("u3");
+    expect(st().changeTkqReport("s1", 1, "submit")).toMatchObject({ error: "Rapor belum diisi" });
+    st().saveTkqDraft("s1", 1, content({ capaian: { agama: "", jatiDiri: "", literasi: "" } }));
+    expect(st().changeTkqReport("s1", 1, "submit")).toMatchObject({ ok: false });
+    st().saveTkqDraft("s1", 1, content());
+    st().recordAttendance("s1", "2026-09-10", "Sakit");
+    expect(st().changeTkqReport("s1", 1, "submit").ok).toBe(true);
+    expect(st().data.tkqReports["s1|2026/2027|1"].absence).toEqual({ sakit: 1, izin: 0, tanpa: 0 });
+
+    login("u3");
+    expect(st().changeTkqReport("s1", 1, "approve")).toMatchObject(denied); // guru
+    login("u5");
+    expect(st().changeTkqReport("s1", 1, "approve")).toMatchObject({ ok: false }); // PIC RTQ
+    login("u2");
+    expect(st().changeTkqReport("s1", 1, "publish")).toMatchObject(denied); // belum disetujui
+    expect(st().changeTkqReport("s1", 1, "approve").ok).toBe(true);
+    login("u3");
+    expect(st().saveTkqDraft("s1", 1, content())).toMatchObject({ error: expect.stringContaining("terkunci") });
+    login("u2");
+    expect(st().changeTkqReport("s1", 1, "publish").ok).toBe(true);
+    expect(st().changeTkqReport("s1", 1, "revise")).toMatchObject({ ok: false });
+    expect(st().changeTkqReport("s1", 1, "revise", "Salah input").ok).toBe(true);
+    expect(st().data.tkqReports["s1|2026/2027|1"]).toMatchObject({ status: "draft", version: 2 });
+  });
+  it("biodata: guru kelasnya dan PIC unit boleh, isi tidak masuk audit", () => {
+    const bio = (over = {}) => ({ ...emptyBio(), father: "Ayah-RAHASIA", ...over });
+    login("u3");
+    expect(st().saveStudentBio("s1", bio()).ok).toBe(true);
+    expect(st().data.students.s1.bio?.father).toBe("Ayah-RAHASIA");
+    expect(st().saveStudentBio("s3", bio())).toMatchObject(denied); // kelas B
+    expect(st().saveStudentBio("s1", bio({ phone: "08ab" }))).toMatchObject({ ok: false });
+    login("u2");
+    expect(st().saveStudentBio("s3", bio()).ok).toBe(true);
+    login("u5");
+    expect(st().saveStudentBio("s3", bio({ mother: "X" }))).toMatchObject(denied); // PIC RTQ
+    expect(JSON.stringify(st().data.audit)).not.toContain("Ayah-RAHASIA");
+    expect(st().data.audit.some((a) => a.action === "Ubah biodata" && a.detail === "1 kolom diubah")).toBe(true);
+  });
+});
 });

@@ -23,6 +23,7 @@ const ICONS: Record<string, LucideIcon> = {
   "/": LayoutDashboard, "/absensi": CalendarCheck, "/nilai": ClipboardList, "/setoran": BookOpen,
   "/buku-penghubung": MessageSquare, "/kejadian": ShieldAlert, "/rapor": FileText, "/rapor-kuartal": FileText,
   "/penugasan": Users, "/impor": Upload, "/pengaturan": Settings, "/audit": History,
+  "/rapor-tkq": FileText,
 };
 const ADMIN = new Set(["/penugasan", "/impor", "/pengaturan", "/audit"]);
 

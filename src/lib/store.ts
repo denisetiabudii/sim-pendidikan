@@ -22,6 +22,9 @@ import type {
   RtqReport,
   Academic,
   Institution,
+  StudentBio,
+  TkqContent,
+  TkqReport
 } from "./types";
 import { importBatchInUse, MAX_ROWS, validateRows } from "./csv";
 import { RECITATION_KINDS, RECITATION_QUALITIES } from "./constants";
@@ -39,6 +42,7 @@ import {
 import { DEMO_PASSWORD, eligible, entryUnit, findByUsername } from "./session";
 import type { Entry } from "./session";
 import { withFeedback } from "./feedback";
+import { BIO_FIELDS, cleanPai, emptyBio, newTkqReport, reportProblemsTkq, validateBio, validateTkq } from "./tkq";
 
 export interface Session {
   unit?: Unit;
@@ -128,6 +132,9 @@ interface State {
   ) => Result;
   saveInstitution: (patch: Partial<Institution>) => Result;
   saveAcademic: (year: string, quarters: Academic["quarters"]) => Result;
+    saveStudentBio: (studentId: string, bio: StudentBio) => Result;
+  saveTkqDraft: (studentId: string, quarter: Quarter, content: TkqContent) => Result;
+  changeTkqReport: (studentId: string, quarter: Quarter, action: ReportAction, reason?: string) => Result;
   reset: () => void;
 }
 
@@ -1099,6 +1106,124 @@ export const useStore = create<State>()(
           return { ok: true };
         },
 
+                saveStudentBio: (studentId, bio) => {
+          const { data, currentUserId } = get();
+          const user = data.users[currentUserId];
+          const student = data.students[studentId];
+          if (!student || !canSeeStudent(data, user, studentId) || !canEditGroup(data, user, student.groupId))
+            return denied;
+          const err = validateBio(bio);
+          if (err) return { ok: false, error: err };
+
+          const old = { ...emptyBio(), ...(student.bio ?? {}) };
+          const clean = emptyBio();
+          let changed = 0;
+          for (const f of BIO_FIELDS) {
+            clean[f.key] = (bio[f.key] ?? "").trim();
+            if (clean[f.key] !== old[f.key]) changed++;
+          }
+          if (changed === 0) return { ok: true };
+
+          set({
+            data: {
+              ...data,
+              students: { ...data.students, [studentId]: { ...student, bio: clean } },
+              audit: audit(data, user.name, "Ubah biodata", student.name, `${changed} kolom diubah`), // isi tidak dicatat
+            },
+          });
+          return { ok: true };
+        },
+
+        saveTkqDraft: (studentId, quarter, content) => {
+          const { data, currentUserId } = get();
+          const user = data.users[currentUserId];
+          const student = data.students[studentId];
+          if (
+            !student ||
+            user.role !== "pendidik" ||
+            !canSeeStudent(data, user, studentId) ||
+            !canEditGroup(data, user, student.groupId)
+          )
+            return denied;
+          if (data.groups[student.groupId].unit !== "TKQ")
+            return { ok: false, error: "Rapor ini hanya untuk peserta TKQ" };
+          if (![1, 2, 3].includes(quarter)) return { ok: false, error: "Kuartal tidak valid" };
+
+          const key = rtqKey(studentId, data.academic.year, quarter);
+          const cur = data.tkqReports[key] ?? newTkqReport(studentId, data.academic.year, quarter);
+          if (cur.status !== "draft")
+            return { ok: false, error: "Rapor terkunci. Hubungi PIC unit untuk revisi." };
+          const err = validateTkq(content);
+          if (err) return { ok: false, error: err };
+
+          const pai = cleanPai(data.paiTemplate, content.pai);
+          set({
+            data: {
+              ...data,
+              tkqReports: { ...data.tkqReports, [key]: { ...cur, ...content, pai } },
+              audit: audit(data, user.name, "Simpan rapor TKQ", student.name, `Kuartal ${quarter}`),
+            },
+          });
+          return { ok: true };
+        },
+
+        changeTkqReport: (studentId, quarter, action, reason) => {
+          const { data, currentUserId } = get();
+          const user = data.users[currentUserId];
+          const student = data.students[studentId];
+          if (!student || !canSeeStudent(data, user, studentId)) return denied;
+          if (data.groups[student.groupId].unit !== "TKQ")
+            return { ok: false, error: "Rapor ini hanya untuk peserta TKQ" };
+
+          const key = rtqKey(studentId, data.academic.year, quarter);
+          const rep = data.tkqReports[key];
+          if (!rep) return { ok: false, error: "Rapor belum diisi" };
+
+          const isTeacher = user.role === "pendidik" && canEditGroup(data, user, student.groupId);
+          const isHead = user.role === "kepala" && user.unit === "TKQ";
+
+          let next: ReportStatus;
+          let patch: Partial<TkqReport> = {};
+          let detail = `Kuartal ${quarter} v${rep.version}`;
+
+          if (action === "submit") {
+            if (!isTeacher || rep.status !== "draft") return denied;
+            const problems = reportProblemsTkq(rep, data.paiTemplate);
+            if (problems.length) return { ok: false, error: problems[0] };
+            const q = data.academic.quarters[quarter - 1];
+            patch = { absence: absenceCounts(data, studentId, q.start, q.end) };
+            next = "submitted";
+          } else if (action === "return") {
+            if (!isHead || rep.status !== "submitted") return denied;
+            next = "draft";
+          } else if (action === "approve") {
+            if (!isHead || rep.status !== "submitted") return denied;
+            next = "approved";
+          } else if (action === "publish") {
+            if (!isHead || rep.status !== "approved") return denied;
+            next = "published";
+          } else {
+            if (!isHead || rep.status !== "published") return denied;
+            if (!reason?.trim()) return { ok: false, error: "Alasan revisi wajib diisi" };
+            const version = rep.version + 1;
+            patch = {
+              version,
+              revisions: [...(rep.revisions ?? []), { version, reason: reason.trim(), at: new Date().toISOString() }],
+            };
+            next = "draft";
+            detail = `Kuartal ${quarter} v${rep.version} → v${version}. Alasan: ${reason.trim()}`;
+          }
+
+          set({
+            data: {
+              ...data,
+              tkqReports: { ...data.tkqReports, [key]: { ...rep, ...patch, status: next } },
+              audit: audit(data, user.name, `Rapor TKQ ${STATUS_LABEL[next]}`, student.name, detail),
+            },
+          });
+          return { ok: true };
+        },
+
         loadDemo: (today) => set({ data: demoData(today) }), // sesi tetap, semua akun ada di data demo
         saveRtqDraft: (studentId, quarter, content) => {
           const { data, currentUserId } = get();
@@ -1288,6 +1413,6 @@ export const useStore = create<State>()(
       };
       return withFeedback(base);
     },
-    { name: "simp-next-v10", skipHydration: true },
+    { name: "simp-next-v11", skipHydration: true }
   ),
 );

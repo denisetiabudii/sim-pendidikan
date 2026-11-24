@@ -1,4 +1,5 @@
 import type { AppData } from "./types";
+import { defaultPaiTemplate } from "./tkq";
 
 export const seed = (): AppData => ({
   users: {
@@ -68,6 +69,18 @@ export const seed = (): AppData => ({
       { start: "2026-11-01", end: "2027-02-28", signDate: "2027-02-28" },
       { start: "2027-03-01", end: "2027-06-30", signDate: "2027-06-30" },
     ],
+  },
+
+    paiTemplate: defaultPaiTemplate(),
+  tkqReports: {},
+  // Diambil dari berkas rapor TKQ klien. NPSN masih kosong ("-----" di berkas klien).
+  institutionTkq: {
+    name: "TKQ Madinatul Quran",
+    nomorStatistik: "",
+    address: "Jl. KH. Hasan Arief, Desa Cipicung, Kec. Banyuresmi, Kab. Garut, Jawa Barat 44191",
+    city: "Garut",
+    mudir: "M. Rofiqul Khoiri, M.Pd",
+    email: "tkq.madinatulquran@gmail.com",
   },
   audit: [],
 });

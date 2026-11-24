@@ -3,69 +3,156 @@ import { useState } from "react";
 import { useStore } from "@/lib/store";
 import { useUser } from "@/lib/useUser";
 import { educatorUnit } from "@/lib/access";
-import { Field, FormGroup } from "@/components/FormSection";
-import type { Unit, User } from "@/lib/types";
+import Modal from "@/components/Modal";
+import GroupAccordion from "@/components/GroupAccordion";
+import type { AccGroup } from "@/components/GroupAccordion";
+import { Field } from "@/components/FormSection";
+import type { Unit } from "@/lib/types";
 
-type Res = { ok: boolean; error?: string };
-
-const UNIT_TOP: Record<Unit, string> = { TKQ: "border-t-blue-500", RTQ: "border-t-violet-500" };
-
-export default function Penugasan() {
-  const { data, assignEducator, unassignEducator, addEducator } = useStore();
+function useScope() {
+  const { data } = useStore();
   const user = useUser();
-  const [view, setView] = useState<"group" | "educator">("group");
-  const [msg, setMsg] = useState("");
-  const [pick, setPick] = useState<Record<string, string>>({});
-  const [name, setName] = useState("");
-  const [unitPick, setUnitPick] = useState<Unit | "">("");
-
   const units: Unit[] = user.role === "direktur" ? ["TKQ", "RTQ"] : user.unit ? [user.unit] : [];
-  const unit = units.includes(unitPick as Unit) ? (unitPick as Unit) : units[0];
-  const done = (r: Res) => setMsg(r.ok ? "" : r.error ?? "Gagal");
-
   const educators = Object.values(data.users).filter((u) => {
     if (u.role !== "pendidik") return false;
     const eu = educatorUnit(data, u);
     return !eu || units.includes(eu);
   });
-  const idle = educators.filter((e) => (e.groupIds ?? []).length === 0);
-  const groupsOf = (u: Unit) => Object.values(data.groups).filter((g) => g.unit === u);
-  const peserta = (gid: string) => Object.values(data.students).filter((s) => s.groupId === gid).length;
+  return { data, units, educators };
+}
 
-  function remove(e: User, gid: string) {
-    if (confirm(`Cabut ${e.name} dari ${data.groups[gid].name}?`)) done(unassignEducator(e.id, gid));
-  }
-
-  // Pilihan pendidik atau kelompok yang masih bisa ditambahkan.
-  function AddRow({ id, options, onAdd }: { id: string; options: { id: string; label: string }[]; onAdd: (v: string) => void }) {
-    const chosen = options.some((o) => o.id === pick[id]) ? pick[id] : options[0]?.id;
-    if (options.length === 0) return null;
-    return (
-      <div className="mt-3 flex gap-2">
-        <select
-          className="min-w-0 flex-1 text-sm"
-          value={chosen}
-          onChange={(e) => setPick({ ...pick, [id]: e.target.value })}
-          aria-label="Pilih untuk ditugaskan"
-        >
-          {options.map((o) => (
-            <option key={o.id} value={o.id}>{o.label}</option>
-          ))}
-        </select>
-        <button className="rounded-lg bg-accent px-3 py-1.5 text-sm text-white" onClick={() => chosen && onAdd(chosen)}>
-          Tugaskan
-        </button>
-      </div>
-    );
-  }
-
-  const Chip = ({ label, sub, onRemove, removeLabel }: { label: string; sub?: string; onRemove: () => void; removeLabel: string }) => (
-    <span className="inline-flex items-center gap-1.5 rounded-full border bg-white py-1 pl-3 pr-1.5 text-sm">
+function Chip({ label, sub, onRemove }: { label: string; sub?: string; onRemove?: () => void }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border bg-white py-1 pl-3 pr-2 text-sm">
       {label}
       {sub && <span className="text-xs text-slate-500">{sub}</span>}
-      <button className="rounded-full px-1.5 text-red-700 hover:bg-red-50" aria-label={removeLabel} onClick={onRemove}>✕</button>
+      {onRemove && (
+        <button className="rounded-full px-1.5 text-red-700 hover:bg-red-50" aria-label={`Cabut ${label}`} onClick={onRemove}>✕</button>
+      )}
     </span>
   );
+}
+
+function AssignDialog({ mode, id, onClose }: { mode: "group" | "educator"; id: string; onClose: () => void }) {
+  const { data, units, educators } = useScope();
+  const { assignEducator, unassignEducator } = useStore();
+  const [pick, setPick] = useState("");
+
+  let title: string;
+  let assigned: { key: string; label: string; sub?: string }[];
+  let options: { id: string; label: string }[];
+  let add: (v: string) => void;
+  let remove: (k: string) => void;
+
+  if (mode === "group") {
+    const g = data.groups[id];
+    title = `${g.unit} · ${g.name}`;
+    assigned = educators
+      .filter((e) => e.groupIds?.includes(id))
+      .map((e) => ({ key: e.id, label: e.name, sub: e.username ? `@${e.username}` : undefined }));
+    options = educators
+      .filter((e) => {
+        const eu = educatorUnit(data, e);
+        return !e.groupIds?.includes(id) && (!eu || eu === g.unit);
+      })
+      .map((e) => ({ id: e.id, label: e.name }));
+    add = (v) => { assignEducator(v, id); };
+    remove = (k) => { unassignEducator(k, id); };
+  } else {
+    const e = data.users[id];
+    const eu = educatorUnit(data, e);
+    const mine = e.groupIds ?? [];
+    title = e.name;
+    assigned = mine.map((gid) => ({ key: gid, label: `${data.groups[gid].unit} · ${data.groups[gid].name}` }));
+    options = Object.values(data.groups)
+      .filter((g) => units.includes(g.unit) && (!eu || eu === g.unit) && !mine.includes(g.id))
+      .map((g) => ({ id: g.id, label: `${g.unit} · ${g.name}` }));
+    add = (v) => { assignEducator(id, v); };
+    remove = (k) => { unassignEducator(id, k); };
+  }
+
+  const chosen = options.some((o) => o.id === pick) ? pick : options[0]?.id;
+
+  return (
+    <Modal size="sm" title={`Atur penugasan`} subtitle={title} cancelLabel="Selesai" onClose={onClose}>
+      <div className="space-y-4">
+        <div>
+          <h3 className="mb-2 text-sm">Saat ini</h3>
+          <div className="flex flex-wrap gap-2">
+            {assigned.length === 0 && <span className="text-sm text-slate-500">Belum ada penugasan.</span>}
+            {assigned.map((a) => (
+              <Chip key={a.key} label={a.label} sub={a.sub} onRemove={() => { if (confirm(`Cabut ${a.label}?`)) remove(a.key); }} />
+            ))}
+          </div>
+        </div>
+        {options.length > 0 && (
+          <div>
+            <h3 className="mb-2 text-sm">Tambah</h3>
+            <div className="flex gap-2">
+              <select className="min-w-0 flex-1" value={chosen} onChange={(e) => setPick(e.target.value)} aria-label="Pilih untuk ditugaskan">
+                {options.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+              </select>
+              <button className="rounded-lg bg-accent px-3 py-2 text-sm text-white" onClick={() => chosen && add(chosen)}>Tugaskan</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+function AddEducatorDialog({ onClose }: { onClose: () => void }) {
+  const { units } = useScope();
+  const { addEducator } = useStore();
+  const [name, setName] = useState("");
+  const [unit, setUnit] = useState<Unit>(units[0]);
+  return (
+    <Modal
+      size="sm"
+      title="Tambah pendidik"
+      onClose={onClose}
+      dirty={name.trim().length > 0}
+      saveLabel="Tambah"
+      onSave={() => { if (addEducator(name, unit).ok) onClose(); }}
+    >
+      <div className="space-y-3">
+        <p className="text-xs text-slate-500">Username dibuat otomatis dari nama. Satu pendidik sementara hanya boleh bertugas di satu unit.</p>
+        <Field label="Nama pendidik">
+          <input className="w-full" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+        </Field>
+        {units.length > 1 && (
+          <Field label="Unit">
+            <select className="w-full" value={unit} onChange={(e) => setUnit(e.target.value as Unit)}>
+              {units.map((u) => <option key={u}>{u}</option>)}
+            </select>
+          </Field>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+export default function Penugasan() {
+  const { data, units, educators } = useScope();
+  const [view, setView] = useState<"group" | "educator">("group");
+  const [q, setQ] = useState("");
+  const [dlg, setDlg] = useState<{ mode: "group" | "educator"; id: string } | null>(null);
+  const [adding, setAdding] = useState(false);
+
+  const idle = educators.filter((e) => (e.groupIds ?? []).length === 0);
+  const groups = Object.values(data.groups)
+    .filter((g) => units.includes(g.unit))
+    .sort((a, b) => a.unit.localeCompare(b.unit) || a.name.localeCompare(b.name));
+  const pesertaOf = (gid: string) => Object.values(data.students).filter((s) => s.groupId === gid).length;
+  const acc: AccGroup[] = groups.map((g) => {
+    const n = educators.filter((e) => e.groupIds?.includes(g.id)).length;
+    return {
+      id: g.id, title: `${g.unit} · ${g.name}`, total: pesertaOf(g.id),
+      chips: [{ label: "belum ada pendidik", n: n === 0 ? 1 : 0, cls: "badge-warn" }, { label: "pendidik", n }],
+    };
+  });
+  const needle = q.trim().toLowerCase();
+  const eds = educators.filter((e) => !needle || e.name.toLowerCase().includes(needle) || (e.username ?? "").includes(needle));
 
   return (
     <div className="space-y-4">
@@ -73,17 +160,12 @@ export default function Penugasan() {
         <h1 className="flex-1">Penugasan pendidik</h1>
         <div className="inline-flex rounded-lg border bg-white p-0.5 text-sm" role="tablist">
           {([["group", "Per kelas / halaqoh"], ["educator", "Per pendidik"]] as const).map(([v, label]) => (
-            <button
-              key={v}
-              role="tab"
-              aria-selected={view === v}
-              className={`rounded-md px-3 py-1.5 ${view === v ? "bg-accent text-white" : ""}`}
-              onClick={() => setView(v)}
-            >
+            <button key={v} role="tab" aria-selected={view === v} className={`rounded-md px-3 py-1.5 ${view === v ? "bg-accent text-white" : "bg-white"}`} onClick={() => setView(v)}>
               {label}
             </button>
           ))}
         </div>
+        <button className="rounded-lg bg-accent px-4 py-2 text-sm text-white" onClick={() => setAdding(true)}>Tambah pendidik</button>
       </div>
 
       {idle.length > 0 && (
@@ -91,112 +173,58 @@ export default function Penugasan() {
           {idle.length} pendidik belum bertugas: {idle.map((e) => e.name).join(", ")}.
         </p>
       )}
-      {msg && <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800" role="alert">{msg}</p>}
 
-      {view === "group" &&
-        units.map((u) => (
-          <section key={u}>
-            <h2 className="mb-2 flex items-center gap-2">
-              {u}
-              <span className="badge">{groupsOf(u).length} kelompok</span>
-            </h2>
-            <div className="grid gap-3 md:grid-cols-2">
-              {groupsOf(u).map((g) => {
-                const assigned = educators.filter((e) => e.groupIds?.includes(g.id));
-                const candidates = educators
-                  .filter((e) => {
-                    const eu = educatorUnit(data, e);
-                    return !e.groupIds?.includes(g.id) && (!eu || eu === g.unit);
-                  })
-                  .map((e) => ({ id: e.id, label: e.name }));
-                return (
-                  <article key={g.id} className={`card border-t-4 p-4 ${UNIT_TOP[g.unit]}`}>
-                    <div className="mb-2 flex flex-wrap items-center gap-2">
-                      <h3 className="flex-1">{g.name}</h3>
-                      <span className="badge">{peserta(g.id)} peserta</span>
-                      {assigned.length === 0 && <span className="badge badge-warn">Belum ada pendidik</span>}
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {assigned.map((e) => (
-                        <Chip
-                          key={e.id}
-                          label={e.name}
-                          sub={e.username ? `@${e.username}` : undefined}
-                          removeLabel={`Cabut ${e.name} dari ${g.name}`}
-                          onRemove={() => remove(e, g.id)}
-                        />
-                      ))}
-                    </div>
-                    <AddRow id={g.id} options={candidates} onAdd={(uid) => done(assignEducator(uid, g.id))} />
-                  </article>
-                );
-              })}
-            </div>
-          </section>
-        ))}
-
-      {view === "educator" && (
-        <div className="grid gap-3 md:grid-cols-2">
-          {educators.map((e) => {
-            const eu = educatorUnit(data, e);
-            const mine = e.groupIds ?? [];
-            const candidates = Object.values(data.groups)
-              .filter((g) => units.includes(g.unit) && (!eu || eu === g.unit) && !mine.includes(g.id))
-              .map((g) => ({ id: g.id, label: `${g.unit} · ${g.name}` }));
+      {view === "group" && (
+        <GroupAccordion
+          groups={acc}
+          forceOpen={false}
+          noun="peserta"
+          render={(gid) => {
+            const assigned = educators.filter((e) => e.groupIds?.includes(gid));
             return (
-              <article key={e.id} className="card p-4">
-                <div className="mb-2 flex flex-wrap items-center gap-2">
-                  <div className="min-w-0 flex-1">
-                    <h3 className="truncate">{e.name}</h3>
-                    {e.username && <div className="text-xs text-slate-500">@{e.username}</div>}
-                  </div>
-                  {eu && <span className="badge badge-accent">{eu}</span>}
-                  {mine.length === 0 && <span className="badge badge-warn">Belum bertugas</span>}
+              <div className="flex flex-wrap items-center gap-2 px-4 py-3">
+                <div className="flex min-w-0 flex-1 flex-wrap gap-2">
+                  {assigned.length === 0 && <span className="text-sm text-slate-500">Belum ada pendidik.</span>}
+                  {assigned.map((e) => <Chip key={e.id} label={e.name} sub={e.username ? `@${e.username}` : undefined} />)}
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {mine.map((gid) => (
-                    <Chip
-                      key={gid}
-                      label={`${data.groups[gid].unit} · ${data.groups[gid].name}`}
-                      removeLabel={`Cabut ${e.name} dari ${data.groups[gid].name}`}
-                      onRemove={() => remove(e, gid)}
-                    />
-                  ))}
-                </div>
-                <AddRow id={e.id} options={candidates} onAdd={(gid) => done(assignEducator(e.id, gid))} />
-              </article>
+                <button className="rounded-lg border px-3 py-1.5 text-sm" onClick={() => setDlg({ mode: "group", id: gid })}>Atur penugasan</button>
+              </div>
             );
-          })}
-        </div>
+          }}
+        />
       )}
 
-      <section className="card space-y-3 p-4">
-        <h2>Tambah pendidik</h2>
-        <FormGroup step={1} title="Data pendidik" hint="Username dibuat otomatis dari nama. Satu pendidik sementara hanya boleh bertugas di satu unit.">
-          <Field label="Nama pendidik">
-            <input className="w-full" value={name} onChange={(e) => setName(e.target.value)} />
-          </Field>
-          {units.length > 1 && (
-            <Field label="Unit">
-              <select className="w-full" value={unit} onChange={(e) => setUnitPick(e.target.value as Unit)}>
-                {units.map((u) => (
-                  <option key={u}>{u}</option>
-                ))}
-              </select>
-            </Field>
-          )}
-        </FormGroup>
-        <button
-          className="rounded-lg bg-accent px-4 py-2 text-sm text-white"
-          onClick={() => {
-            const r = addEducator(name, unit);
-            done(r);
-            if (r.ok) setName("");
-          }}
-        >
-          Tambah pendidik
-        </button>
-      </section>
+      {view === "educator" && (
+        <>
+          <div className="card p-3">
+            <input className="w-full" placeholder="Cari pendidik…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Cari pendidik" />
+          </div>
+          <ul className="card divide-y">
+            {eds.map((e) => {
+              const eu = educatorUnit(data, e);
+              const mine = e.groupIds ?? [];
+              return (
+                <li key={e.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+                  <div className="min-w-40 flex-1">
+                    <div className="font-medium">{e.name}</div>
+                    <div className="text-xs text-slate-500">{e.username ? `@${e.username}` : ""}</div>
+                  </div>
+                  {eu && <span className="badge badge-accent">{eu}</span>}
+                  <div className="flex flex-wrap gap-1.5">
+                    {mine.length === 0 && <span className="badge badge-warn">Belum bertugas</span>}
+                    {mine.map((gid) => <span key={gid} className="badge">{data.groups[gid].name}</span>)}
+                  </div>
+                  <button className="rounded-lg border px-3 py-1.5 text-sm" onClick={() => setDlg({ mode: "educator", id: e.id })}>Atur</button>
+                </li>
+              );
+            })}
+            {eds.length === 0 && <li className="px-4 py-3 text-sm text-slate-500">Tidak ada pendidik yang cocok.</li>}
+          </ul>
+        </>
+      )}
+
+      {dlg && <AssignDialog key={`${dlg.mode}-${dlg.id}`} mode={dlg.mode} id={dlg.id} onClose={() => setDlg(null)} />}
+      {adding && <AddEducatorDialog onClose={() => setAdding(false)} />}
     </div>
   );
 }
